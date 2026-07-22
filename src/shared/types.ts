@@ -1,0 +1,34 @@
+export interface InventoryItem {
+  name: string
+  itemId: number
+  slotIndex: number
+  data: number
+  durability: number
+  isSealed: boolean
+  enchantIndex: number
+  amplifyType: number
+  amplifyValue: number
+}
+
+export interface ItemList {
+  storage: string
+  count: number
+  items: InventoryItem[]
+}
+
+export interface CharacterInventory {
+  name: string
+  time: string
+  lists: ItemList[]
+  totalItems: number
+}
+
+export interface ParseResult {
+  characters: CharacterInventory[]
+  sourcePath: string
+  parsedAt: string
+}
+
+export interface ParseError {
+  error: string
+}
