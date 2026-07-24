@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PanelLeft } from 'lucide-react'
+import { PanelLeft, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -199,6 +199,22 @@ function App(): React.JSX.Element {
               : 'トレースログを読み込んでください'}
           </p>
         </div>
+        {result && (
+          <div className="relative w-72">
+            <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+            <Input
+              className="pl-8"
+              placeholder="全タブを横断して検索…"
+              value={globalSearch}
+              onChange={(e) => setGlobalSearch(e.target.value)}
+            />
+            {globalMatches && (
+              <span className="text-muted-foreground absolute right-2.5 top-1/2 -translate-y-1/2 text-xs tabular-nums">
+                {globalMatches.size} 件
+              </span>
+            )}
+          </div>
+        )}
       </header>
 
       {error && (
