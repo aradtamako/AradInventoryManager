@@ -273,12 +273,6 @@ function App(): React.JSX.Element {
                 <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
                   <h2 className="mr-2 text-base font-semibold">{selected.name}</h2>
                   <Badge variant="outline">{rows.length} 件表示</Badge>
-                  <Input
-                    className="ml-auto w-64"
-                    placeholder="アイテム名で検索…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 border-b px-6 py-2">
