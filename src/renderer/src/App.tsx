@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PanelLeft } from 'lucide-react'
+import { PanelLeft, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -29,7 +29,8 @@ function App(): React.JSX.Element {
   const [result, setResult] = useState<ParseResult | null>(null)
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const [storageFilter, setStorageFilter] = useState<string>(ALL_STORAGES)
-  const [search, setSearch] = useState('')
+  // 全タブ（全エントリ）を横断するグローバル検索。
+  const [globalSearch, setGlobalSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -42,7 +43,6 @@ function App(): React.JSX.Element {
     )
     setSelectedName(firstShared ? firstShared.name : (res.characters[0]?.name ?? null))
     setStorageFilter(ALL_STORAGES)
-    setSearch('')
     if (res.characters.length === 0) setError('キャラクターデータが見つかりませんでした。')
     else setError(null)
   }
@@ -150,12 +150,33 @@ function App(): React.JSX.Element {
 
   const rows = useMemo(() => {
     if (!selected) return []
-    const q = search.trim().toLowerCase()
+    // グローバル検索が有効なら、表もそのクエリ（アイテム名または ID）で絞り込む。
+    const g = globalSearch.trim().toLowerCase()
     return selected.lists
       .filter((l) => storageFilter === ALL_STORAGES || l.storage === storageFilter)
       .flatMap((l) => l.items.map((item) => ({ ...item, storage: l.storage })))
-      .filter((item) => q === '' || item.name.toLowerCase().includes(q))
-  }, [selected, storageFilter, search])
+      .filter(
+        (item) =>
+          g === '' || item.name.toLowerCase().includes(g) || String(item.itemId).includes(g)
+      )
+  }, [selected, storageFilter, globalSearch])
+
+  // グローバル検索: 全エントリを横断し、アイテム名または ID が一致するエントリ名の集合を返す。
+  // 未入力時は null（ハイライトなし）。値はサイドバーのタブをハイライトするために使う。
+  const globalMatches = useMemo<Set<string> | null>(() => {
+    const q = globalSearch.trim().toLowerCase()
+    if (q === '') return null
+    const names = new Set<string>()
+    for (const entry of entries) {
+      const hit = entry.lists.some((l) =>
+        l.items.some(
+          (item) => item.name.toLowerCase().includes(q) || String(item.itemId).includes(q)
+        )
+      )
+      if (hit) names.add(entry.name)
+    }
+    return names
+  }, [entries, globalSearch])
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -178,6 +199,22 @@ function App(): React.JSX.Element {
               : 'トレースログを読み込んでください'}
           </p>
         </div>
+        {result && (
+          <div className="relative w-72">
+            <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+            <Input
+              className="pl-8"
+              placeholder="全タブを横断して検索…"
+              value={globalSearch}
+              onChange={(e) => setGlobalSearch(e.target.value)}
+            />
+            {globalMatches && (
+              <span className="text-muted-foreground absolute right-2.5 top-1/2 -translate-y-1/2 text-xs tabular-nums">
+                {globalMatches.size} 件
+              </span>
+            )}
+          </div>
+        )}
       </header>
 
       {error && (
@@ -197,6 +234,8 @@ function App(): React.JSX.Element {
             <ul className="h-full w-56 overflow-y-auto p-2">
               {entries.map((c) => {
                 const isShared = SHARED_NAMES.has(c.name)
+                const isMatch = globalMatches?.has(c.name) ?? false
+                const isDimmed = globalMatches !== null && !isMatch
                 return (
                   <li key={c.name}>
                     <button
@@ -209,7 +248,9 @@ function App(): React.JSX.Element {
                         selectedName === c.name
                           ? 'bg-accent text-accent-foreground'
                           : 'hover:bg-accent/50',
-                        isShared && 'mb-1 font-medium'
+                        isShared && 'mb-1 font-medium',
+                        isMatch && 'ring-primary bg-primary/10 ring-2 ring-inset',
+                        isDimmed && 'opacity-40'
                       )}
                     >
                       <span className="truncate">
@@ -232,12 +273,6 @@ function App(): React.JSX.Element {
                 <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
                   <h2 className="mr-2 text-base font-semibold">{selected.name}</h2>
                   <Badge variant="outline">{rows.length} 件表示</Badge>
-                  <Input
-                    className="ml-auto w-64"
-                    placeholder="アイテム名で検索…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 border-b px-6 py-2">
