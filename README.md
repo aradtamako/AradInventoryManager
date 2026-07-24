@@ -1,6 +1,6 @@
 # Arad Inventory Manager
 
-<img width="1186" height="793" alt="image" src="https://github.com/user-attachments/assets/6332fdd5-315a-41df-ba07-a7d15ed9d3fa" />
+<img width="1186" height="793" alt="image" src="https://github.com/user-attachments/assets/b7d083ea-b18c-4e41-b930-4780c8d42510" />
 
 DNF（アラド戦記）のトレースログからキャラクターごとのインベントリを読み込んで管理するデスクトップアプリです。
 
@@ -14,7 +14,7 @@ https://github.com/aradtamako/AradInventoryManager/releases
 1. 上記URLからダウンロードする
 2. `arad-inventory-manager.Setup.x.x.x.exe` を起動してインストールする
 3. デスクトップに自動作成される `arad-inventory-manager` ショートカットをクリックして起動する
-
+4. キャラクターを選択してゲーム開始したタイミングで自動的に情報が更新されます
 
 ## 開発
 
