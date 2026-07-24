@@ -234,6 +234,8 @@ function App(): React.JSX.Element {
             <ul className="h-full w-56 overflow-y-auto p-2">
               {entries.map((c) => {
                 const isShared = SHARED_NAMES.has(c.name)
+                const isMatch = globalMatches?.has(c.name) ?? false
+                const isDimmed = globalMatches !== null && !isMatch
                 return (
                   <li key={c.name}>
                     <button
@@ -246,7 +248,9 @@ function App(): React.JSX.Element {
                         selectedName === c.name
                           ? 'bg-accent text-accent-foreground'
                           : 'hover:bg-accent/50',
-                        isShared && 'mb-1 font-medium'
+                        isShared && 'mb-1 font-medium',
+                        isMatch && 'ring-primary bg-primary/10 ring-2 ring-inset',
+                        isDimmed && 'opacity-40'
                       )}
                     >
                       <span className="truncate">
