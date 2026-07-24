@@ -1,8 +1,13 @@
 # Arad Inventory Manager
 
+<img width="1186" height="793" alt="image" src="https://github.com/user-attachments/assets/6332fdd5-315a-41df-ba07-a7d15ed9d3fa" />
+
 DNF（アラド戦記）のトレースログからキャラクターごとのインベントリを読み込んで管理するデスクトップアプリです。
 
 **技術構成:** Electron + TypeScript + React + Vite + Tailwind CSS v4 + shadcn/ui
+
+## ダウンロード
+https://github.com/aradtamako/AradInventoryManager/releases
 
 ## 使い方
 
