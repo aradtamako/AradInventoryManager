@@ -29,7 +29,8 @@ function App(): React.JSX.Element {
   const [result, setResult] = useState<ParseResult | null>(null)
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const [storageFilter, setStorageFilter] = useState<string>(ALL_STORAGES)
-  const [search, setSearch] = useState('')
+  // 全タブ（全エントリ）を横断するグローバル検索。
+  const [globalSearch, setGlobalSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -42,7 +43,6 @@ function App(): React.JSX.Element {
     )
     setSelectedName(firstShared ? firstShared.name : (res.characters[0]?.name ?? null))
     setStorageFilter(ALL_STORAGES)
-    setSearch('')
     if (res.characters.length === 0) setError('キャラクターデータが見つかりませんでした。')
     else setError(null)
   }
@@ -150,12 +150,33 @@ function App(): React.JSX.Element {
 
   const rows = useMemo(() => {
     if (!selected) return []
-    const q = search.trim().toLowerCase()
+    // グローバル検索が有効なら、表もそのクエリ（アイテム名または ID）で絞り込む。
+    const g = globalSearch.trim().toLowerCase()
     return selected.lists
       .filter((l) => storageFilter === ALL_STORAGES || l.storage === storageFilter)
       .flatMap((l) => l.items.map((item) => ({ ...item, storage: l.storage })))
-      .filter((item) => q === '' || item.name.toLowerCase().includes(q))
-  }, [selected, storageFilter, search])
+      .filter(
+        (item) =>
+          g === '' || item.name.toLowerCase().includes(g) || String(item.itemId).includes(g)
+      )
+  }, [selected, storageFilter, globalSearch])
+
+  // グローバル検索: 全エントリを横断し、アイテム名または ID が一致するエントリ名の集合を返す。
+  // 未入力時は null（ハイライトなし）。値はサイドバーのタブをハイライトするために使う。
+  const globalMatches = useMemo<Set<string> | null>(() => {
+    const q = globalSearch.trim().toLowerCase()
+    if (q === '') return null
+    const names = new Set<string>()
+    for (const entry of entries) {
+      const hit = entry.lists.some((l) =>
+        l.items.some(
+          (item) => item.name.toLowerCase().includes(q) || String(item.itemId).includes(q)
+        )
+      )
+      if (hit) names.add(entry.name)
+    }
+    return names
+  }, [entries, globalSearch])
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
