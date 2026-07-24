@@ -11,11 +11,10 @@ https://github.com/aradtamako/AradInventoryManager/releases
 
 ## 使い方
 
-1. `ファイルを開く` でトレースログ（`.txt`）を選択、または `テキストを貼り付け` でログを直接貼り付けて解析します。
-2. 左サイドバーでキャラクターを選択します（`game start with character [ 名前 ]` から自動検出）。
-3. 金庫チップで絞り込み、検索ボックスでアイテム名／IDを検索できます。
+1. 上記URLからダウンロードする
+2. `arad-inventory-manager.Setup.x.x.x.exe` を起動してインストールする
+3. デスクトップに自動作成される `arad-inventory-manager` ショートカットをクリックして起動する
 
-同じキャラクターが複数回ログインしている場合は、最も所持数が多いスナップショットを採用します。
 
 ## 開発
 
