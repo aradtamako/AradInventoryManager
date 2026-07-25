@@ -13,7 +13,7 @@ export function mergeCharacter(
 ): CharacterInventory {
   if (!stored) {
     const totalItems = fresh.lists.reduce((n, l) => n + l.items.length, 0)
-    return { ...fresh, totalItems }
+    return { ...fresh, totalItems, prefix: '' }
   }
   const byStorage = new Map<string, ItemList>()
   for (const list of stored.lists) byStorage.set(list.storage, list)
@@ -24,7 +24,8 @@ export function mergeCharacter(
     name: fresh.name,
     time: fresh.time || stored.time,
     lists,
-    totalItems
+    totalItems,
+    prefix: stored.prefix ?? '' // 保存済みのプレフィクスを維持
   }
 }
 
@@ -100,7 +101,7 @@ export function parseTraceLog(text: string, sourcePath = ''): ParseResult {
     const charMatch = rawLine.match(CHAR_START)
     if (charMatch) {
       const time = rawLine.match(TIME_PREFIX)?.[1] ?? ''
-      current = { name: charMatch[1], time, lists: [], totalItems: 0 }
+      current = { name: charMatch[1], time, lists: [], totalItems: 0, prefix: '' }
       sessions.push(current)
       activeList = null
       remaining = 0
