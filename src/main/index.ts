@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { mergeCharacter, parseTraceLog } from '../shared/parser'
 import { decodeTrc, watchTrc, type TrcWatcher, DNF_TRC_PATH } from './trc'
-import { closeDb, getCharacterOrder, getStoredCharacters, saveCharacterOrder, upsertCharacter } from './db'
+import { closeDb, getCharacterOrder, getStoredCharacters, saveCharacterOrder, saveCharacterPrefix, upsertCharacter } from './db'
 import type { CharacterInventory, ParseResult } from '../shared/types'
 
 let trcWatcher: TrcWatcher | null = null
@@ -90,6 +90,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('inventory:parseText', async (_event, text: string): Promise<ParseResult> => {
     return parseTraceLog(text)
+  })
+
+  // キャラクター名の左に表示するプレフィクス（D／B）を保存する
+  ipcMain.handle('inventory:setPrefix', async (_event, name: string, prefix: string): Promise<void> => {
+    saveCharacterPrefix(name, prefix)
   })
 
   createWindow()
