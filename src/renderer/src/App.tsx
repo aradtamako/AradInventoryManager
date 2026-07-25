@@ -41,6 +41,11 @@ function App(): React.JSX.Element {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [characterOrder, setCharacterOrder] = useState<string[]>([])
+  const [dropIndicator, setDropIndicator] = useState<{
+    name: string
+    position: 'before' | 'after'
+  } | null>(null)
 
   function applyResult(res: ParseResult | null): void {
     if (!res) return
@@ -98,6 +103,26 @@ function App(): React.JSX.Element {
     // マウント時に一度だけ実行する
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // キャラクター並び順をエントリと同期（DB から読んだ順をベースに、新規キャラは末尾へ）
+  useEffect(() => {
+    if (!result) return
+    const charNames = entries.filter((e) => !SHARED_NAMES.has(e.name)).map((e) => e.name)
+    setCharacterOrder((prev) => {
+      const base = result.characterOrder?.filter((n) => charNames.includes(n)) ?? []
+      const existing = prev.filter((n) => charNames.includes(n) && !base.includes(n))
+      const newNames = charNames.filter((n) => !base.includes(n) && !existing.includes(n))
+      const merged = [...base, ...existing, ...newNames]
+      if (merged.length === prev.length && merged.every((n, i) => n === prev[i])) return prev
+      return merged
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
+
+  // 並び順が変わったら DB に保存
+  useEffect(() => {
+    if (characterOrder.length > 0) void window.api.saveOrder(characterOrder)
+  }, [characterOrder])
 
   // 共有リスト（アカウント金庫・キューブ・ソウル）を各キャラクターから抜き出し、
   // それぞれ単独のエントリとしてまとめる
