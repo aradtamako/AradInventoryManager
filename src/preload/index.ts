@@ -6,6 +6,8 @@ const api = {
   openFile: (): Promise<ParseResult | null> => ipcRenderer.invoke('inventory:openFile'),
   parseText: (text: string): Promise<ParseResult> =>
     ipcRenderer.invoke('inventory:parseText', text),
+  saveOrder: (order: string[]): Promise<void> =>
+    ipcRenderer.invoke('inventory:saveOrder', order),
   // DNF.trc が変更され自動再読み込みされたときに呼ばれる。返り値は購読解除関数。
   onUpdate: (callback: (result: ParseResult) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, result: ParseResult): void => callback(result)

@@ -84,6 +84,10 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('inventory:saveOrder', async (_event, order: string[]): Promise<void> => {
+    saveCharacterOrder(order)
+  })
+
   ipcMain.handle('inventory:parseText', async (_event, text: string): Promise<ParseResult> => {
     return parseTraceLog(text)
   })
