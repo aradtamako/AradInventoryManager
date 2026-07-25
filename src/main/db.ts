@@ -67,6 +67,33 @@ export function upsertCharacter(character: CharacterInventory): void {
     )
 }
 
+export function getCharacterOrder(): string[] {
+  const row = getDb()
+    .prepare('SELECT value FROM meta WHERE key = ?')
+    .get('character_order') as { value: string } | undefined
+  if (!row) return []
+  try {
+    return JSON.parse(row.value) as string[]
+  } catch {
+    return []
+  }
+}
+
+export function saveCharacterOrder(order: string[]): void {
+  getDb()
+    .prepare(
+      `INSERT INTO meta (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run('character_order', JSON.stringify(order))
+}
+
+export function saveCharacterPrefix(name: string, prefix: string): void {
+  getDb()
+    .prepare(`UPDATE characters SET prefix = ? WHERE name = ?`)
+    .run(prefix, name)
+}
+
 export function closeDb(): void {
   db?.close()
   db = null
