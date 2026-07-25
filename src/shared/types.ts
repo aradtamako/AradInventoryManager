@@ -21,6 +21,7 @@ export interface CharacterInventory {
   time: string
   lists: ItemList[]
   totalItems: number
+  prefix: string
 }
 
 export interface ParseResult {
