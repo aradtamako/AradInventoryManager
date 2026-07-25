@@ -22,25 +22,33 @@ function getDb(): DatabaseSync {
       name       TEXT PRIMARY KEY,
       time       TEXT,
       lists      TEXT NOT NULL,
+      prefix     TEXT DEFAULT '',
       updated_at TEXT NOT NULL
     )
   `)
+  // 既存 DB に prefix カラムが無い場合のマイグレーション
+  try {
+    db.exec(`ALTER TABLE characters ADD COLUMN prefix TEXT DEFAULT ''`)
+  } catch {
+    // 既に存在していれば無視
+  }
   return db
 }
 
 // 保存済みの全キャラクターを読み込む。JSON が壊れている行はスキップする。
 export function getStoredCharacters(): CharacterInventory[] {
-  const rows = getDb().prepare('SELECT name, time, lists FROM characters').all() as {
+  const rows = getDb().prepare('SELECT name, time, lists, prefix FROM characters').all() as {
     name: string
     time: string | null
     lists: string
+    prefix: string | null
   }[]
   const result: CharacterInventory[] = []
   for (const row of rows) {
     try {
       const lists = JSON.parse(row.lists) as ItemList[]
       const totalItems = lists.reduce((n, l) => n + l.items.length, 0)
-      result.push({ name: row.name, time: row.time ?? '', lists, totalItems })
+      result.push({ name: row.name, time: row.time ?? '', lists, totalItems, prefix: row.prefix ?? '' })
     } catch {
       // 壊れた行は無視して次へ
     }
@@ -52,17 +60,19 @@ export function getStoredCharacters(): CharacterInventory[] {
 export function upsertCharacter(character: CharacterInventory): void {
   getDb()
     .prepare(
-      `INSERT INTO characters (name, time, lists, updated_at)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO characters (name, time, lists, prefix, updated_at)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(name) DO UPDATE SET
          time = excluded.time,
          lists = excluded.lists,
+         prefix = excluded.prefix,
          updated_at = excluded.updated_at`
     )
     .run(
       character.name,
       character.time,
       JSON.stringify(character.lists),
+      character.prefix ?? '',
       new Date().toISOString()
     )
 }
