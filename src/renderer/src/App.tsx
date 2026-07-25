@@ -13,6 +13,12 @@ import {
 } from '@/components/ui/table'
 import type { CharacterInventory, ItemList, ParseResult } from '@shared/types'
 
+function toSearchKey(s: string): string {
+  return s.toLowerCase().replace(/[\u3041-\u3096]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) + 0x60)
+  )
+}
+
 const ALL_STORAGES = '__all__'
 // 全キャラクター共通のリストは、キャラクターごとではなく単独のエントリとして扱う。
 // storage はパーサが付ける位置ラベル、name はサイドバー等での表示名。
@@ -31,6 +37,7 @@ function App(): React.JSX.Element {
   const [storageFilter, setStorageFilter] = useState<string>(ALL_STORAGES)
   // 全タブ（全エントリ）を横断するグローバル検索。
   const [globalSearch, setGlobalSearch] = useState('')
+  const [sidebarSearch, setSidebarSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -151,26 +158,25 @@ function App(): React.JSX.Element {
   const rows = useMemo(() => {
     if (!selected) return []
     // グローバル検索が有効なら、表もそのクエリ（アイテム名または ID）で絞り込む。
-    const g = globalSearch.trim().toLowerCase()
+    const g = toSearchKey(globalSearch.trim())
     return selected.lists
       .filter((l) => storageFilter === ALL_STORAGES || l.storage === storageFilter)
       .flatMap((l) => l.items.map((item) => ({ ...item, storage: l.storage })))
       .filter(
-        (item) =>
-          g === '' || item.name.toLowerCase().includes(g) || String(item.itemId).includes(g)
+        (item) => g === '' || toSearchKey(item.name).includes(g) || String(item.itemId).includes(g)
       )
   }, [selected, storageFilter, globalSearch])
 
   // グローバル検索: 全エントリを横断し、アイテム名または ID が一致するエントリ名の集合を返す。
   // 未入力時は null（ハイライトなし）。値はサイドバーのタブをハイライトするために使う。
   const globalMatches = useMemo<Set<string> | null>(() => {
-    const q = globalSearch.trim().toLowerCase()
+    const q = toSearchKey(globalSearch.trim())
     if (q === '') return null
     const names = new Set<string>()
     for (const entry of entries) {
       const hit = entry.lists.some((l) =>
         l.items.some(
-          (item) => item.name.toLowerCase().includes(q) || String(item.itemId).includes(q)
+          (item) => toSearchKey(item.name).includes(q) || String(item.itemId).includes(q)
         )
       )
       if (hit) names.add(entry.name)
@@ -231,8 +237,25 @@ function App(): React.JSX.Element {
               sidebarOpen ? 'w-56' : 'w-0 border-r-0'
             )}
           >
-            <ul className="h-full w-56 overflow-y-auto p-2">
-              {entries.map((c) => {
+            <div className="flex h-full w-56 flex-col">
+              <div className="shrink-0 p-2 pb-1">
+                <div className="relative">
+                  <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+                  <Input
+                    className="pl-8"
+                    placeholder="キャラクター検索…"
+                    value={sidebarSearch}
+                    onChange={(e) => setSidebarSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+              <ul className="flex-1 overflow-y-auto p-2 pt-1">
+                {entries
+                  .filter((c) => {
+                    const q = toSearchKey(sidebarSearch.trim())
+                    return q === '' || toSearchKey(c.name).includes(q)
+                  })
+                  .map((c) => {
                 const isShared = SHARED_NAMES.has(c.name)
                 const isMatch = globalMatches?.has(c.name) ?? false
                 const isDimmed = globalMatches !== null && !isMatch
@@ -265,6 +288,7 @@ function App(): React.JSX.Element {
                 )
               })}
             </ul>
+            </div>
           </aside>
 
           <main className="flex min-w-0 flex-1 flex-col">
