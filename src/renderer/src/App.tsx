@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PanelLeft, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -46,6 +46,36 @@ function App(): React.JSX.Element {
     name: string
     position: 'before' | 'after'
   } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    name: string
+  } | null>(null)
+  // refreshResult が別バッチで動作しても prefix を参照できるよう ref にも保持する
+  const prefixOverrides = useRef<Map<string, string>>(new Map())
+
+  async function handleSetPrefix(name: string, prefix: string): Promise<void> {
+    setContextMenu(null)
+    prefixOverrides.current.set(name, prefix)
+    setResult((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        characters: prev.characters.map((c) => (c.name === name ? { ...c, prefix } : c))
+      }
+    })
+    await window.api.setPrefix(name, prefix)
+  }
+
+  // 右クリックメニューを閉じる
+  useEffect(() => {
+    if (!contextMenu) return
+    function close(): void {
+      setContextMenu(null)
+    }
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [contextMenu])
 
   function applyResult(res: ParseResult | null): void {
     if (!res) return
@@ -61,8 +91,16 @@ function App(): React.JSX.Element {
 
   // 自動再読み込み（DNF.trc の変更検知）では、選択中のキャラクターや検索条件を
   // リセットせずにデータだけ差し替える。
+  // ただし手動で設定された prefix は ref から復元する（setPrefix → refreshResult の競合対策）。
   function refreshResult(res: ParseResult): void {
-    setResult(res)
+    const ov = prefixOverrides.current
+    setResult({
+      ...res,
+      characters: res.characters.map((c) => ({
+        ...c,
+        prefix: ov.has(c.name) ? ov.get(c.name)! : c.prefix
+      }))
+    })
     setError(res.characters.length === 0 ? 'キャラクターデータが見つかりませんでした。' : null)
   }
 
@@ -151,7 +189,8 @@ function App(): React.JSX.Element {
           name: def.name,
           time: '',
           lists: [{ ...list, storage: def.name }],
-          totalItems: list.items.length
+          totalItems: list.items.length,
+          prefix: ''
         })
       }
     }
@@ -285,6 +324,55 @@ function App(): React.JSX.Element {
         <div className="border-b bg-destructive/10 px-6 py-2 text-sm text-destructive">{error}</div>
       )}
 
+      {contextMenu && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setContextMenu(null)
+          }}
+        >
+          <div
+            className="absolute flex min-w-24 flex-col rounded-md border bg-popover p-1 shadow-md"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => handleSetPrefix(contextMenu.name, 'D')}
+              className={cn(
+                'flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm transition-colors hover:bg-accent',
+                result?.characters.find((c) => c.name === contextMenu.name)?.prefix === 'D' &&
+                  'bg-accent font-medium'
+              )}
+            >
+              <span className="inline-flex size-4 items-center justify-center rounded bg-red-500 text-[10px] font-bold text-white">D</span>
+              D
+            </button>
+            <button
+              onClick={() => handleSetPrefix(contextMenu.name, 'B')}
+              className={cn(
+                'flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm transition-colors hover:bg-accent',
+                result?.characters.find((c) => c.name === contextMenu.name)?.prefix === 'B' &&
+                  'bg-accent font-medium'
+              )}
+            >
+              <span className="inline-flex size-4 items-center justify-center rounded bg-emerald-500 text-[10px] font-bold text-white">B</span>
+              B
+            </button>
+            <button
+              onClick={() => handleSetPrefix(contextMenu.name, '')}
+              className={cn(
+                'flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm transition-colors hover:bg-accent',
+                (!result?.characters.find((c) => c.name === contextMenu.name)?.prefix) &&
+                  'bg-accent font-medium'
+              )}
+            >
+              なし
+            </button>
+          </div>
+        </div>
+      )}
       {!result ? (
         <EmptyState loading={loading} />
       ) : (
@@ -322,6 +410,11 @@ function App(): React.JSX.Element {
                   <li
                     key={c.name}
                     className="relative"
+                    onContextMenu={(e) => {
+                      if (isShared) return
+                      e.preventDefault()
+                      setContextMenu({ x: e.clientX, y: e.clientY, name: c.name })
+                    }}
                     draggable={!isShared}
                     onDragStart={(e) => {
                       e.dataTransfer.effectAllowed = 'move'
@@ -383,9 +476,20 @@ function App(): React.JSX.Element {
                         !isShared && 'cursor-grab active:cursor-grabbing'
                       )}
                     >
-                      <span className="truncate">
+                      <span className="flex min-w-0 items-center gap-1">
+                        {!isShared && c.prefix && (
+                          <span
+                            className={cn(
+                              'inline-flex size-4 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white',
+                              c.prefix === 'D' && 'bg-red-500',
+                              c.prefix === 'B' && 'bg-emerald-500'
+                            )}
+                          >
+                            {c.prefix}
+                          </span>
+                        )}
                         {isShared && <span className="mr-1">🏦</span>}
-                        {c.name}
+                        <span className="truncate">{c.name}</span>
                       </span>
                       <Badge variant={isShared ? 'default' : 'secondary'} className="ml-2">
                         {c.totalItems}
@@ -417,47 +521,61 @@ function App(): React.JSX.Element {
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {searchResults.map((r) => (
-                        <div key={r.name}>
-                          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                            {r.name}
-                            <Badge variant="secondary">{r.items.length}</Badge>
-                          </h3>
-                          <Table className="table-fixed">
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead className="w-auto">アイテム名</TableHead>
-                                <TableHead className="w-[140px]">保管場所</TableHead>
-                                <TableHead className="w-[100px] text-right">所持数</TableHead>
-                                <TableHead className="w-[80px]">状態</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {r.items.map((item, i) => (
-                                <TableRow
-                                  key={`${r.name}-${item.storage}-${item.slotIndex}-${item.itemId}-${i}`}
+                      {searchResults.map((r) => {
+                        const entry = entries.find((e) => e.name === r.name)
+                        return (
+                          <div key={r.name}>
+                            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                              {entry?.prefix && (
+                                <span
+                                  className={cn(
+                                    'inline-flex size-4 items-center justify-center rounded text-[10px] font-bold text-white',
+                                    entry.prefix === 'D' && 'bg-red-500',
+                                    entry.prefix === 'B' && 'bg-emerald-500'
+                                  )}
                                 >
-                                  <TableCell className="truncate font-medium">{item.name}</TableCell>
-                                  <TableCell className="truncate">{item.storage}</TableCell>
-                                  <TableCell className="text-right font-mono tabular-nums">
-                                    {item.data.toLocaleString()}
-                                  </TableCell>
-                                  <TableCell>
-                                    {item.isSealed && (
-                                      <Badge variant="destructive" className="mr-1">
-                                        封印
-                                      </Badge>
-                                    )}
-                                    {item.amplifyValue > 0 && (
-                                      <Badge variant="default">+{item.amplifyValue}</Badge>
-                                    )}
-                                  </TableCell>
+                                  {entry.prefix}
+                                </span>
+                              )}
+                              {r.name}
+                              <Badge variant="secondary">{r.items.length}</Badge>
+                            </h3>
+                            <Table className="table-fixed">
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="w-auto">アイテム名</TableHead>
+                                  <TableHead className="w-[140px]">保管場所</TableHead>
+                                  <TableHead className="w-[100px] text-right">所持数</TableHead>
+                                  <TableHead className="w-[80px]">状態</TableHead>
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      ))}
+                              </TableHeader>
+                              <TableBody>
+                                {r.items.map((item, i) => (
+                                  <TableRow
+                                    key={`${r.name}-${item.storage}-${item.slotIndex}-${item.itemId}-${i}`}
+                                  >
+                                    <TableCell className="truncate font-medium">{item.name}</TableCell>
+                                    <TableCell className="truncate">{item.storage}</TableCell>
+                                    <TableCell className="text-right font-mono tabular-nums">
+                                      {item.data.toLocaleString()}
+                                    </TableCell>
+                                    <TableCell>
+                                      {item.isSealed && (
+                                        <Badge variant="destructive" className="mr-1">
+                                          封印
+                                        </Badge>
+                                      )}
+                                      {item.amplifyValue > 0 && (
+                                        <Badge variant="default">+{item.amplifyValue}</Badge>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -465,7 +583,20 @@ function App(): React.JSX.Element {
             ) : selected ? (
               <>
                 <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
-                  <h2 className="mr-2 text-base font-semibold">{selected.name}</h2>
+                  <h2 className="mr-2 flex items-center gap-1 text-base font-semibold">
+                    {selected.prefix && (
+                      <span
+                        className={cn(
+                          'inline-flex size-5 items-center justify-center rounded text-xs font-bold text-white',
+                          selected.prefix === 'D' && 'bg-red-500',
+                          selected.prefix === 'B' && 'bg-emerald-500'
+                        )}
+                      >
+                        {selected.prefix}
+                      </span>
+                    )}
+                    {selected.name}
+                  </h2>
                   <Badge variant="outline">{rows.length} 件表示</Badge>
                 </div>
 
