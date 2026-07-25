@@ -184,6 +184,30 @@ function App(): React.JSX.Element {
     return names
   }, [entries, globalSearch])
 
+  // 全キャラクター横断のアイテム検索結果。
+  const searchResults = useMemo<
+    Array<{ name: string; items: Array<InventoryItem & { storage: string }> }> | null
+  >(() => {
+    const q = toSearchKey(globalSearch.trim())
+    if (q === '') return null
+    const results: Array<{
+      name: string
+      items: Array<InventoryItem & { storage: string }>
+    }> = []
+    for (const entry of entries) {
+      const items = entry.lists.flatMap((l) =>
+        l.items
+          .filter(
+            (item) =>
+              toSearchKey(item.name).includes(q) || String(item.itemId).includes(q)
+          )
+          .map((item) => ({ ...item, storage: l.storage }))
+      )
+      if (items.length > 0) results.push({ name: entry.name, items })
+    }
+    return results
+  }, [entries, globalSearch])
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <header className="flex items-center gap-3 border-b px-6 py-3">
