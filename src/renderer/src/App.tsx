@@ -267,7 +267,7 @@ function App(): React.JSX.Element {
       name: string
       items: Array<InventoryItem & { storage: string }>
     }> = []
-    for (const entry of entries) {
+    for (const entry of orderedEntries) {
       const items = entry.lists.flatMap((l) =>
         l.items
           .filter(
@@ -279,7 +279,7 @@ function App(): React.JSX.Element {
       if (items.length > 0) results.push({ name: entry.name, items })
     }
     return results
-  }, [entries, globalSearch])
+  }, [orderedEntries, globalSearch])
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
