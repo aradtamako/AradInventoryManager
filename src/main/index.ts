@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { mergeCharacter, parseTraceLog } from '../shared/parser'
 import { decodeTrc, watchTrc, type TrcWatcher, DNF_TRC_PATH } from './trc'
-import { closeDb, getStoredCharacters, upsertCharacter } from './db'
+import { closeDb, getCharacterOrder, getStoredCharacters, saveCharacterOrder, upsertCharacter } from './db'
 import type { CharacterInventory, ParseResult } from '../shared/types'
 
 let trcWatcher: TrcWatcher | null = null
@@ -26,8 +26,9 @@ async function loadInventory(): Promise<ParseResult> {
     upsertCharacter(merged) // 観測できたキャラクターだけ永続化する
   }
 
-  const characters = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'ja'))
-  return { characters, sourcePath: DNF_TRC_PATH, parsedAt: new Date().toISOString() }
+  const characters = [...byName.values()]
+  const characterOrder = getCharacterOrder()
+  return { characters, sourcePath: DNF_TRC_PATH, parsedAt: new Date().toISOString(), characterOrder }
 }
 
 function createWindow(): void {
@@ -81,6 +82,10 @@ app.whenReady().then(() => {
     } catch (e) {
       console.error('[trc] 自動再読み込みに失敗:', e)
     }
+  })
+
+  ipcMain.handle('inventory:saveOrder', async (_event, order: string[]): Promise<void> => {
+    saveCharacterOrder(order)
   })
 
   ipcMain.handle('inventory:parseText', async (_event, text: string): Promise<ParseResult> => {

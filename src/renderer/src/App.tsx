@@ -41,6 +41,11 @@ function App(): React.JSX.Element {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [characterOrder, setCharacterOrder] = useState<string[]>([])
+  const [dropIndicator, setDropIndicator] = useState<{
+    name: string
+    position: 'before' | 'after'
+  } | null>(null)
 
   function applyResult(res: ParseResult | null): void {
     if (!res) return
@@ -99,6 +104,26 @@ function App(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // キャラクター並び順をエントリと同期（DB から読んだ順をベースに、新規キャラは末尾へ）
+  useEffect(() => {
+    if (!result) return
+    const charNames = entries.filter((e) => !SHARED_NAMES.has(e.name)).map((e) => e.name)
+    setCharacterOrder((prev) => {
+      const base = result.characterOrder?.filter((n) => charNames.includes(n)) ?? []
+      const existing = prev.filter((n) => charNames.includes(n) && !base.includes(n))
+      const newNames = charNames.filter((n) => !base.includes(n) && !existing.includes(n))
+      const merged = [...base, ...existing, ...newNames]
+      if (merged.length === prev.length && merged.every((n, i) => n === prev[i])) return prev
+      return merged
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
+
+  // 並び順が変わったら DB に保存
+  useEffect(() => {
+    if (characterOrder.length > 0) void window.api.saveOrder(characterOrder)
+  }, [characterOrder])
+
   // 共有リスト（アカウント金庫・キューブ・ソウル）を各キャラクターから抜き出し、
   // それぞれ単独のエントリとしてまとめる
   const { entries, characterCount } = useMemo(() => {
@@ -135,6 +160,15 @@ function App(): React.JSX.Element {
       characterCount: characters.length
     }
   }, [result])
+
+  // characterOrder に従って並び替えたエントリ（共有エントリは常に先頭）
+  const orderedEntries = useMemo(() => {
+    const shared = entries.filter((e) => SHARED_NAMES.has(e.name))
+    const chars = entries.filter((e) => !SHARED_NAMES.has(e.name))
+    const orderMap = new Map(characterOrder.map((name, i) => [name, i]))
+    chars.sort((a, b) => (orderMap.get(a.name) ?? Infinity) - (orderMap.get(b.name) ?? Infinity))
+    return [...shared, ...chars]
+  }, [entries, characterOrder])
 
   // 自動再読み込み後に選択中のキャラクターが消えていたら、先頭のエントリへ退避する。
   useEffect(() => {
@@ -238,9 +272,9 @@ function App(): React.JSX.Element {
               value={globalSearch}
               onChange={(e) => setGlobalSearch(e.target.value)}
             />
-            {globalMatches && (
+            {searchResults && (
               <span className="text-muted-foreground absolute right-2.5 top-1/2 -translate-y-1/2 text-xs tabular-nums">
-                {globalMatches.size} 件
+                {searchResults.reduce((n, r) => n + r.items.length, 0)} 件
               </span>
             )}
           </div>
@@ -274,7 +308,7 @@ function App(): React.JSX.Element {
                 </div>
               </div>
               <ul className="flex-1 overflow-y-auto p-2 pt-1">
-                {entries
+                {orderedEntries
                   .filter((c) => {
                     const q = toSearchKey(sidebarSearch.trim())
                     return q === '' || toSearchKey(c.name).includes(q)
@@ -283,8 +317,56 @@ function App(): React.JSX.Element {
                 const isShared = SHARED_NAMES.has(c.name)
                 const isMatch = globalMatches?.has(c.name) ?? false
                 const isDimmed = globalMatches !== null && !isMatch
+                const dropPos = dropIndicator?.name === c.name ? dropIndicator.position : null
                 return (
-                  <li key={c.name}>
+                  <li
+                    key={c.name}
+                    className="relative"
+                    draggable={!isShared}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = 'move'
+                      e.dataTransfer.setData('text/plain', c.name)
+                    }}
+                    onDragOver={(e) => {
+                      if (isShared) return
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      const y = e.clientY - rect.top
+                      const position = y < rect.height / 2 ? 'before' : 'after'
+                      e.currentTarget.dataset.dropPosition = position
+                      setDropIndicator({ name: c.name, position })
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.currentTarget.contains(e.relatedTarget as Node)) return
+                      setDropIndicator(null)
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      if (isShared) return
+                      const fromName = e.dataTransfer.getData('text/plain')
+                      if (!fromName || fromName === c.name) return
+                      const position = e.currentTarget.dataset
+                        .dropPosition as 'before' | 'after' | undefined
+                      setCharacterOrder((prev) => {
+                        const newOrder = [...prev]
+                        const fromIdx = newOrder.indexOf(fromName)
+                        const toIdx = newOrder.indexOf(c.name)
+                        if (fromIdx === -1 || toIdx === -1) return prev
+                        newOrder.splice(fromIdx, 1)
+                        let insertAt = toIdx
+                        if (fromIdx < toIdx) insertAt--
+                        if (position === 'after') insertAt++
+                        newOrder.splice(insertAt, 0, fromName)
+                        return newOrder
+                      })
+                      setDropIndicator(null)
+                    }}
+                    onDragEnd={() => setDropIndicator(null)}
+                  >
+                    {dropPos === 'before' && (
+                      <div className="absolute -top-px left-2 right-2 z-10 h-0.5 rounded-full bg-primary" />
+                    )}
                     <button
                       onClick={() => {
                         setSelectedName(c.name)
@@ -297,7 +379,8 @@ function App(): React.JSX.Element {
                           : 'hover:bg-accent/50',
                         isShared && 'mb-1 font-medium',
                         isMatch && 'ring-primary bg-primary/10 ring-2 ring-inset',
-                        isDimmed && 'opacity-40'
+                        isDimmed && 'opacity-40',
+                        !isShared && 'cursor-grab active:cursor-grabbing'
                       )}
                     >
                       <span className="truncate">
@@ -308,6 +391,9 @@ function App(): React.JSX.Element {
                         {c.totalItems}
                       </Badge>
                     </button>
+                    {dropPos === 'after' && (
+                      <div className="absolute -bottom-px left-2 right-2 z-10 h-0.5 rounded-full bg-primary" />
+                    )}
                   </li>
                 )
               })}

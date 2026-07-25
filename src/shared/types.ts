@@ -27,6 +27,7 @@ export interface ParseResult {
   characters: CharacterInventory[]
   sourcePath: string
   parsedAt: string
+  characterOrder?: string[]
 }
 
 export interface ParseError {
