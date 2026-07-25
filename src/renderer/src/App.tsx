@@ -405,18 +405,18 @@ function App(): React.JSX.Element {
                 </div>
 
                 <div className="min-h-0 flex-1 px-6 py-4">
-                  <Table containerClassName="h-full overflow-auto">
+                  <Table containerClassName="h-full overflow-auto" className="table-fixed">
                     <TableHeader className="sticky top-0 z-10 bg-background">
                       <TableRow>
-                        <TableHead>アイテム名</TableHead>
-                        <TableHead className="text-right">所持数</TableHead>
-                        <TableHead>状態</TableHead>
+                        <TableHead className="w-auto">アイテム名</TableHead>
+                        <TableHead className="w-[100px] text-right">所持数</TableHead>
+                        <TableHead className="w-[80px]">状態</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {rows.map((item, i) => (
                         <TableRow key={`${item.storage}-${item.slotIndex}-${item.itemId}-${i}`}>
-                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="truncate font-medium">{item.name}</TableCell>
                           <TableCell className="text-right font-mono tabular-nums">
                             {item.data.toLocaleString()}
                           </TableCell>
