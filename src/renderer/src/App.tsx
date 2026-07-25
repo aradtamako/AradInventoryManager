@@ -316,7 +316,67 @@ function App(): React.JSX.Element {
           </aside>
 
           <main className="flex min-w-0 flex-1 flex-col">
-            {selected && (
+            {searchResults !== null ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
+                  <h2 className="mr-2 text-base font-semibold">アイテム検索結果</h2>
+                  <Badge variant="outline">
+                    {searchResults.reduce((n, r) => n + r.items.length, 0)} 件
+                  </Badge>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                  {searchResults.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">
+                      該当するアイテムがありません
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {searchResults.map((r) => (
+                        <div key={r.name}>
+                          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                            {r.name}
+                            <Badge variant="secondary">{r.items.length}</Badge>
+                          </h3>
+                          <Table className="table-fixed">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-auto">アイテム名</TableHead>
+                                <TableHead className="w-[140px]">保管場所</TableHead>
+                                <TableHead className="w-[100px] text-right">所持数</TableHead>
+                                <TableHead className="w-[80px]">状態</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {r.items.map((item, i) => (
+                                <TableRow
+                                  key={`${r.name}-${item.storage}-${item.slotIndex}-${item.itemId}-${i}`}
+                                >
+                                  <TableCell className="truncate font-medium">{item.name}</TableCell>
+                                  <TableCell className="truncate">{item.storage}</TableCell>
+                                  <TableCell className="text-right font-mono tabular-nums">
+                                    {item.data.toLocaleString()}
+                                  </TableCell>
+                                  <TableCell>
+                                    {item.isSealed && (
+                                      <Badge variant="destructive" className="mr-1">
+                                        封印
+                                      </Badge>
+                                    )}
+                                    {item.amplifyValue > 0 && (
+                                      <Badge variant="default">+{item.amplifyValue}</Badge>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : selected ? (
               <>
                 <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
                   <h2 className="mr-2 text-base font-semibold">{selected.name}</h2>
@@ -383,7 +443,7 @@ function App(): React.JSX.Element {
                   </Table>
                 </div>
               </>
-            )}
+            ) : null}
           </main>
         </div>
       )}
