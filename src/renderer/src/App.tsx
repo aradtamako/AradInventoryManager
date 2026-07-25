@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'
-import type { CharacterInventory, ItemList, ParseResult } from '@shared/types'
+import type { CharacterInventory, InventoryItem, ItemList, ParseResult } from '@shared/types'
 
 function toSearchKey(s: string): string {
   return s.toLowerCase().replace(/[\u3041-\u3096]/g, (ch) =>
