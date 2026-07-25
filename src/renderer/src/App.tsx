@@ -272,9 +272,9 @@ function App(): React.JSX.Element {
               value={globalSearch}
               onChange={(e) => setGlobalSearch(e.target.value)}
             />
-            {globalMatches && (
+            {searchResults && (
               <span className="text-muted-foreground absolute right-2.5 top-1/2 -translate-y-1/2 text-xs tabular-nums">
-                {globalMatches.size} 件
+                {searchResults.reduce((n, r) => n + r.items.length, 0)} 件
               </span>
             )}
           </div>
