@@ -353,7 +353,7 @@ function App(): React.JSX.Element {
             )}
           >
             <CalendarClock className="size-4" />
-            アイテム監視記録
+            履歴
           </button>
         )}
       </header>

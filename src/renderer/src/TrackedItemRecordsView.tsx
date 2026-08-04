@@ -144,7 +144,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
-        <h2 className="mr-2 text-base font-semibold">アイテム監視記録</h2>
+        <h2 className="mr-2 text-base font-semibold">履歴</h2>
         <Badge variant="outline">AM6:00 更新</Badge>
         {pivotRows && <Badge variant="secondary">{pivotRows.length} 種</Badge>}
       </div>
