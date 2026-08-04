@@ -11,12 +11,14 @@ import {
   getStoredCharacters,
   getTrackedItemRecords,
   getWatchedItemNames,
+  getTrackedItemCharacterRecords,
   getWatchedItemOrder,
   removeWatchedItem,
   saveCharacterOrder,
   saveCharacterPrefix,
   saveWatchedItemOrder,
   upsertCharacter,
+  upsertTrackedItemCharacterRecords,
   upsertTrackedItemRecords
 } from './db'
 import type { CharacterInventory, ParseResult } from '../shared/types'
@@ -57,6 +59,30 @@ function extractTrackedItemCounts(
   return counts
 }
 
+// 監視対象アイテム名ごとに、キャラクター別の所持数を返す（アイテム名 → キャラクター名 → 所持数）。
+// アカウント金庫・キューブ・ソウルは特定のキャラクターの所持品ではなく全キャラ共有のため、
+// キャラクター別の内訳からは除外する（全キャラ合計側の extractTrackedItemCounts には含まれる）。
+function extractTrackedItemCountsByCharacter(
+  characters: CharacterInventory[],
+  watchedNames: Set<string>
+): Map<string, Map<string, number>> {
+  const counts = new Map<string, Map<string, number>>()
+  if (watchedNames.size === 0) return counts
+
+  for (const c of characters) {
+    for (const list of c.lists) {
+      if (SHARED_STORAGES.has(list.storage)) continue
+      for (const item of list.items) {
+        if (!watchedNames.has(item.name)) continue
+        const byCharacter = counts.get(item.name) ?? new Map<string, number>()
+        byCharacter.set(c.name, (byCharacter.get(c.name) ?? 0) + item.data)
+        counts.set(item.name, byCharacter)
+      }
+    }
+  }
+  return counts
+}
+
 let trcWatcher: TrcWatcher | null = null
 
 // DNF.trc を復号してパースし、SQLite に保存済みの前回起動時までのデータとマージする。
@@ -83,6 +109,8 @@ async function loadInventory(): Promise<ParseResult> {
   const watchedNames = new Set(getWatchedItemNames())
   const trackedCounts = extractTrackedItemCounts(characters, watchedNames)
   if (trackedCounts.size > 0) upsertTrackedItemRecords(trackedCounts)
+  const trackedCountsByCharacter = extractTrackedItemCountsByCharacter(characters, watchedNames)
+  if (trackedCountsByCharacter.size > 0) upsertTrackedItemCharacterRecords(trackedCountsByCharacter)
 
   return { characters, sourcePath: DNF_TRC_PATH, parsedAt: new Date().toISOString(), characterOrder }
 }
@@ -161,6 +189,11 @@ app.whenReady().then(() => {
   // 監視対象アイテムの日次記録一覧（AM6:00 境界のゲーム日ごと）
   ipcMain.handle('trackedItems:getRecords', async () => {
     return getTrackedItemRecords()
+  })
+
+  // 監視対象アイテムのキャラクター別日次記録一覧
+  ipcMain.handle('trackedItems:getCharacterRecords', async () => {
+    return getTrackedItemCharacterRecords()
   })
 
   // 監視対象アイテム名の一覧
