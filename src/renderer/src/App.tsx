@@ -67,6 +67,21 @@ function App(): React.JSX.Element {
     await window.api.setPrefix(name, prefix)
   }
 
+  async function handleDeleteCharacter(name: string): Promise<void> {
+    setContextMenu(null)
+    if (!window.confirm(`「${name}」のデータを削除しますか？この操作は取り消せません。`)) return
+    prefixOverrides.current.delete(name)
+    setResult((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        characters: prev.characters.filter((c) => c.name !== name)
+      }
+    })
+    setCharacterOrder((prev) => prev.filter((n) => n !== name))
+    await window.api.deleteCharacter(name)
+  }
+
   // 右クリックメニューを閉じる
   useEffect(() => {
     if (!contextMenu) return
@@ -334,10 +349,11 @@ function App(): React.JSX.Element {
           }}
         >
           <div
-            className="absolute flex min-w-24 flex-col rounded-md border bg-popover p-1 shadow-md"
+            className="absolute flex min-w-32 flex-col rounded-md border bg-popover p-1 shadow-md"
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="px-3 pb-1 pt-1.5 text-xs font-medium text-muted-foreground">タイプ</div>
             <button
               onClick={() => handleSetPrefix(contextMenu.name, 'D')}
               className={cn(
@@ -369,6 +385,13 @@ function App(): React.JSX.Element {
               )}
             >
               なし
+            </button>
+            <div className="my-1 h-px bg-border" />
+            <button
+              onClick={() => handleDeleteCharacter(contextMenu.name)}
+              className="flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
+            >
+              データ削除
             </button>
           </div>
         </div>
