@@ -185,6 +185,15 @@ function App(): React.JSX.Element {
     if (characterOrder.length > 0) void window.api.saveOrder(characterOrder)
   }, [characterOrder])
 
+  // キャラクター名 → prefix（D/B）。履歴ページのキャラ別バッジ表示に使う。
+  const characterPrefixes = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of result?.characters ?? []) {
+      if (c.prefix) map.set(c.name, c.prefix)
+    }
+    return map
+  }, [result])
+
   // 共有リスト（アカウント金庫・キューブ・ソウル）を各キャラクターから抜き出し、
   // それぞれ単独のエントリとしてまとめる
   const { entries, characterCount } = useMemo(() => {
@@ -422,7 +431,10 @@ function App(): React.JSX.Element {
       {!result ? (
         <EmptyState loading={loading} />
       ) : showTrackedItems ? (
-        <TrackedItemRecordsView />
+        <TrackedItemRecordsView
+          characterPrefixes={characterPrefixes}
+          characterOrder={characterOrder}
+        />
       ) : (
         <div className="flex min-h-0 flex-1">
           <aside

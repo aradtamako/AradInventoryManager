@@ -1,7 +1,12 @@
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { app } from 'electron'
-import type { CharacterInventory, DailyTrackedItemRecord, ItemList } from '../shared/types'
+import type {
+  CharacterInventory,
+  DailyTrackedItemCharacterRecord,
+  DailyTrackedItemRecord,
+  ItemList
+} from '../shared/types'
 
 // DNF.trc はゲームを再起動すると初期化されるため、これまでに読み取ったキャラクター
 // ごとのインベントリを SQLite に保存しておき、trc が空になっても継続表示できるようにする。
@@ -48,6 +53,18 @@ function getDb(): DatabaseSync {
       count       INTEGER NOT NULL,
       recorded_at TEXT NOT NULL,
       PRIMARY KEY (game_date, item_name)
+    )
+  `)
+  // AM6:00 を境界とする「ゲーム日」ごとの、監視対象アイテムのキャラクター別所持数の記録。
+  // tracked_item_daily（全キャラ合計）とは別に、キャラクター単位の内訳を保持する。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tracked_item_daily_by_character (
+      game_date      TEXT NOT NULL,
+      item_name      TEXT NOT NULL,
+      character_name TEXT NOT NULL,
+      count          INTEGER NOT NULL,
+      recorded_at    TEXT NOT NULL,
+      PRIMARY KEY (game_date, item_name, character_name)
     )
   `)
   // 既存 DB に prefix カラムが無い場合のマイグレーション
@@ -166,6 +183,52 @@ export function getTrackedItemRecords(): DailyTrackedItemRecord[] {
   return rows.map((r) => ({
     date: r.game_date,
     itemName: r.item_name,
+    count: r.count,
+    recordedAt: r.recorded_at
+  }))
+}
+
+// 現在のゲーム日の、監視対象アイテムのキャラクター別所持数を記録
+// （キー: アイテム名 → キャラクター名 → 所持数。同日中は上書き、日をまたぐと新しい行になる）。
+export function upsertTrackedItemCharacterRecords(
+  items: Map<string, Map<string, number>>,
+  at: Date = new Date()
+): void {
+  const gameDate = gameDateFor(at)
+  const stmt = getDb().prepare(
+    `INSERT INTO tracked_item_daily_by_character
+       (game_date, item_name, character_name, count, recorded_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(game_date, item_name, character_name) DO UPDATE SET
+       count = excluded.count,
+       recorded_at = excluded.recorded_at`
+  )
+  for (const [itemName, byCharacter] of items) {
+    for (const [characterName, count] of byCharacter) {
+      stmt.run(gameDate, itemName, characterName, count, at.toISOString())
+    }
+  }
+}
+
+// 記録済みの全ゲーム日・全アイテム・全キャラクターを古い順に返す。
+export function getTrackedItemCharacterRecords(): DailyTrackedItemCharacterRecord[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT game_date, item_name, character_name, count, recorded_at
+       FROM tracked_item_daily_by_character
+       ORDER BY game_date ASC, item_name ASC, character_name ASC`
+    )
+    .all() as {
+    game_date: string
+    item_name: string
+    character_name: string
+    count: number
+    recorded_at: string
+  }[]
+  return rows.map((r) => ({
+    date: r.game_date,
+    itemName: r.item_name,
+    characterName: r.character_name,
     count: r.count,
     recordedAt: r.recorded_at
   }))
