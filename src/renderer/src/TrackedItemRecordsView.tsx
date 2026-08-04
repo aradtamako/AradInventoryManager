@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'
-import type { DailyTrackedItemRecord } from '@shared/types'
+import type { DailyTrackedItemCharacterRecord, DailyTrackedItemRecord } from '@shared/types'
 
 // アイテムごとの折れ線に割り当てる色（監視アイテム数がこれより多い場合は循環させる）。
 const CHART_PALETTE = [
@@ -80,8 +80,19 @@ function latestOnOrBefore(
 // 監視対象アイテムはユーザーが自由に追加・削除でき、キューブ・ソウル以外の任意のアイテムを追跡できる。
 type Tab = 'daily' | 'period' | 'chart'
 
-export function TrackedItemRecordsView(): React.JSX.Element {
+export function TrackedItemRecordsView({
+  characterPrefixes,
+  characterOrder
+}: {
+  // キャラクター名 → prefix（D/B）。バッジのアイコン表示に使う（無ければ非表示）。
+  characterPrefixes?: Map<string, string>
+  // サイドバーと同じキャラクター表示順。バッジの並び替えに使う（無ければ五十音順）。
+  characterOrder?: string[]
+}): React.JSX.Element {
   const [records, setRecords] = useState<DailyTrackedItemRecord[] | null>(null)
+  const [charRecords, setCharRecords] = useState<DailyTrackedItemCharacterRecord[] | null>(null)
+  // 集計対象。'' なら全キャラ合計（records）、それ以外なら該当キャラクターの内訳（charRecords）を使う。
+  const [selectedCharacter, setSelectedCharacter] = useState('')
   const [watchedItems, setWatchedItems] = useState<string[] | null>(null)
   const [newItemName, setNewItemName] = useState('')
   const [rangeStart, setRangeStart] = useState('')
@@ -107,9 +118,28 @@ export function TrackedItemRecordsView(): React.JSX.Element {
 
   useEffect(() => {
     void window.api.getTrackedItemRecords().then(setRecords)
+    void window.api.getTrackedItemCharacterRecords().then(setCharRecords)
     void window.api.listWatchedItems().then(setWatchedItems)
     void window.api.getWatchedItemOrder().then(setItemOrder)
   }, [])
+
+  // キャラクター別記録に登場するキャラクター名。選択肢として使う。
+  // characterOrder（サイドバーの並び順）に従い、そこに無い名前は末尾に五十音順で並べる。
+  const characterNames = useMemo(() => {
+    if (!charRecords) return []
+    const names = [...new Set(charRecords.map((r) => r.characterName))]
+    return orderItemNames(names, characterOrder ?? [])
+  }, [charRecords, characterOrder])
+
+  // 選択中の集計対象（全キャラ合計 or 特定キャラクター）に応じたレコード一覧。
+  // 以降の集計（日付一覧・履歴・グラフ等）はすべてこれを土台にする。
+  const activeRecords = useMemo<DailyTrackedItemRecord[] | null>(() => {
+    if (!selectedCharacter) return records
+    if (!charRecords) return null
+    return charRecords
+      .filter((r) => r.characterName === selectedCharacter)
+      .map((r) => ({ date: r.date, itemName: r.itemName, count: r.count, recordedAt: r.recordedAt }))
+  }, [records, charRecords, selectedCharacter])
 
   async function handleAddItem(): Promise<void> {
     const name = newItemName.trim()
@@ -167,9 +197,15 @@ export function TrackedItemRecordsView(): React.JSX.Element {
   }
 
   const allDates = useMemo(() => {
-    if (!records) return []
-    return [...new Set(records.map((r) => r.date))].sort()
-  }, [records])
+    if (!activeRecords) return []
+    return [...new Set(activeRecords.map((r) => r.date))].sort()
+  }, [activeRecords])
+
+  // 集計対象（全キャラ合計⇔特定キャラクター）を切り替えたら、期間を選び直せるようリセットする。
+  useEffect(() => {
+    setRangeStart('')
+    setRangeEnd('')
+  }, [selectedCharacter])
 
   // 記録が読み込まれたら、初回のみ期間を全期間で初期化する。
   useEffect(() => {
@@ -181,15 +217,15 @@ export function TrackedItemRecordsView(): React.JSX.Element {
   // アイテムごとの記録履歴（日付昇順）。前日比較・期間比較の両方で使う。
   const historyByItem = useMemo(() => {
     const map = new Map<string, DailyTrackedItemRecord[]>()
-    if (!records) return map
-    for (const r of records) {
+    if (!activeRecords) return map
+    for (const r of activeRecords) {
       const list = map.get(r.itemName) ?? []
       list.push(r)
       map.set(r.itemName, list)
     }
     for (const list of map.values()) list.sort((a, b) => a.date.localeCompare(b.date))
     return map
-  }, [records])
+  }, [activeRecords])
 
   // 選択期間内の日付一覧（列見出し用、昇順）。
   const rangeDates = useMemo(() => {
@@ -261,6 +297,22 @@ export function TrackedItemRecordsView(): React.JSX.Element {
         <h2 className="mr-2 text-base font-semibold">履歴</h2>
         <Badge variant="outline">AM6:00 更新</Badge>
         {pivotRows && <Badge variant="secondary">{pivotRows.length} 種</Badge>}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <TabChip
+            label="合計"
+            active={selectedCharacter === ''}
+            onClick={() => setSelectedCharacter('')}
+          />
+          {characterNames.map((name) => (
+            <TabChip
+              key={name}
+              label={name}
+              prefix={characterPrefixes?.get(name)}
+              active={selectedCharacter === name}
+              onClick={() => setSelectedCharacter(name)}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b px-6 py-2">
@@ -333,7 +385,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
         </div>
       </div>
 
-      {records && records.length > 0 && (
+      {activeRecords && activeRecords.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b px-6 py-2">
           <span className="text-muted-foreground text-sm">開始日</span>
           <DatePicker
@@ -353,7 +405,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
         </div>
       )}
 
-      {records && records.length > 0 && (
+      {activeRecords && activeRecords.length > 0 && (
         <div className="flex flex-wrap gap-1.5 border-b px-6 py-2">
           <TabChip label="日次比較" active={tab === 'daily'} onClick={() => setTab('daily')} />
           <TabChip label="期間比較" active={tab === 'period'} onClick={() => setTab('period')} />
@@ -507,10 +559,13 @@ export function TrackedItemRecordsView(): React.JSX.Element {
 
 function TabChip({
   label,
+  prefix,
   active,
   onClick
 }: {
   label: string
+  // キャラクター名チップの場合、D/B のアイコンバッジ（App.tsx のキャラ一覧と同じ配色）。
+  prefix?: string
   active: boolean
   onClick: () => void
 }): React.JSX.Element {
@@ -518,10 +573,21 @@ function TabChip({
     <button
       onClick={onClick}
       className={cn(
-        'rounded-full border px-3 py-1 text-xs transition-colors',
+        'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors',
         active ? 'bg-primary text-primary-foreground border-transparent' : 'hover:bg-accent'
       )}
     >
+      {prefix && (
+        <span
+          className={cn(
+            'inline-flex size-4 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white',
+            prefix === 'D' && 'bg-red-500',
+            prefix === 'B' && 'bg-emerald-500'
+          )}
+        >
+          {prefix}
+        </span>
+      )}
       {label}
     </button>
   )
