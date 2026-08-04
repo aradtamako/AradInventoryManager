@@ -613,7 +613,7 @@ export function TrackedItemRecordsView({
                   {orderedWatchedItems?.map((name) => (
                     <TabChip
                       key={name}
-                      label={itemsWithCharacterData.has(name) ? name : `${name}（内訳なし）`}
+                      label={name}
                       active={chartCompareItem === name}
                       onClick={() => setChartCompareItem(name)}
                     />
