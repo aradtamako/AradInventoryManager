@@ -100,6 +100,18 @@ export function TrackedItemRecordsView({
   const [tab, setTab] = useState<Tab>('daily')
   // グラフの凡例クリックで非表示にしたアイテム名。
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set())
+  // グラフの表示モード。'item': 通常（選択中の集計対象について、監視アイテムごとの推移）
+  // 'character': 1つのアイテムを、複数キャラクター間で比較する
+  const [chartMode, setChartMode] = useState<'item' | 'character'>('item')
+  // キャラクター比較モードで対象とする単一アイテム。
+  const [chartCompareItem, setChartCompareItem] = useState('')
+  // キャラクター比較モードで表示するキャラクター名の集合。
+  const [chartCompareCharacters, setChartCompareCharacters] = useState<Set<string>>(new Set())
+  // chartCompareCharacters の初回自動初期化（全キャラ選択）が済んだかどうか。
+  // size === 0 だけで判定すると「すべて解除」操作が再初期化で打ち消されてしまうため、別途フラグで管理する。
+  const [chartCompareCharactersInitialized, setChartCompareCharactersInitialized] = useState(false)
+  // キャラクター比較グラフの凡例クリックで非表示にしたキャラクター名。
+  const [hiddenCompareSeries, setHiddenCompareSeries] = useState<Set<string>>(new Set())
   // バッジのドラッグ並び替えで確定した監視対象アイテムの表示順。表・グラフもこの順序に従う。
   const [itemOrder, setItemOrder] = useState<string[]>([])
   const [dropIndicator, setDropIndicator] = useState<{
@@ -109,6 +121,24 @@ export function TrackedItemRecordsView({
 
   function toggleSeries(name: string): void {
     setHiddenSeries((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  function toggleCompareSeries(name: string): void {
+    setHiddenCompareSeries((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  function toggleCompareCharacter(name: string): void {
+    setChartCompareCharacters((prev) => {
       const next = new Set(prev)
       if (next.has(name)) next.delete(name)
       else next.add(name)
@@ -275,6 +305,86 @@ export function TrackedItemRecordsView({
     })
   }, [pivotRows, historyByItem, rangeDates])
 
+  // キャラクター別の内訳が存在するアイテム名の集合。
+  // アカウント金庫・キューブ・ソウル（共有ストレージ）は特定キャラクターの所持品ではないため、
+  // 全キャラ合計（records）には含まれてもキャラクター別記録（charRecords）には現れない。
+  const itemsWithCharacterData = useMemo(() => {
+    if (!charRecords) return new Set<string>()
+    return new Set(charRecords.map((r) => r.itemName))
+  }, [charRecords])
+
+  // キャラクター比較モードの対象アイテムを初期化する（未選択のときのみ）。
+  // キャラクター別の内訳があるアイテムを優先し、無ければ先頭のアイテムにフォールバックする。
+  useEffect(() => {
+    if (chartCompareItem) return
+    if (!orderedWatchedItems || orderedWatchedItems.length === 0) return
+    const withData = orderedWatchedItems.find((n) => itemsWithCharacterData.has(n))
+    setChartCompareItem(withData ?? orderedWatchedItems[0])
+  }, [orderedWatchedItems, chartCompareItem, itemsWithCharacterData])
+
+  // キャラクター比較モードの対象キャラクターを、初回のみ全キャラクターで初期化する。
+  useEffect(() => {
+    if (chartCompareCharactersInitialized) return
+    if (characterNames.length > 0) {
+      setChartCompareCharacters(new Set(characterNames))
+      setChartCompareCharactersInitialized(true)
+    }
+  }, [characterNames, chartCompareCharactersInitialized])
+
+  // 選択中アイテムについて、キャラクターごとの記録履歴（日付昇順）。
+  const compareHistoryByCharacter = useMemo(() => {
+    const map = new Map<string, DailyTrackedItemRecord[]>()
+    if (!charRecords || !chartCompareItem) return map
+    for (const r of charRecords) {
+      if (r.itemName !== chartCompareItem) continue
+      const list = map.get(r.characterName) ?? []
+      list.push({ date: r.date, itemName: r.itemName, count: r.count, recordedAt: r.recordedAt })
+      map.set(r.characterName, list)
+    }
+    for (const list of map.values()) list.sort((a, b) => a.date.localeCompare(b.date))
+    return map
+  }, [charRecords, chartCompareItem])
+
+  // 比較対象として選んだキャラクターのうち、実際に記録がある名前（表示順を維持）。
+  const compareCharacterNames = useMemo(
+    () => characterNames.filter((n) => chartCompareCharacters.has(n) && compareHistoryByCharacter.has(n)),
+    [characterNames, chartCompareCharacters, compareHistoryByCharacter]
+  )
+
+  // グラフ用の設定（キャラクター名ごとにラベルと色を割り当てる）。
+  const compareChartConfig = useMemo<ChartConfig>(() => {
+    const config: ChartConfig = {}
+    compareCharacterNames.forEach((name, i) => {
+      config[name] = { label: name, color: CHART_PALETTE[i % CHART_PALETTE.length] }
+    })
+    return config
+  }, [compareCharacterNames])
+
+  // 比較対象アイテムについて実際に記録がある日付一覧（トップの集計対象選択とは独立に、
+  // 選択中キャラクター群の記録から求める。任意で開始日・終了日の範囲を適用する）。
+  const compareDates = useMemo(() => {
+    const set = new Set<string>()
+    for (const name of compareCharacterNames) {
+      for (const r of compareHistoryByCharacter.get(name) ?? []) set.add(r.date)
+    }
+    let dates = [...set].sort()
+    if (rangeStart && rangeEnd) dates = dates.filter((d) => d >= rangeStart && d <= rangeEnd)
+    return dates
+  }, [compareCharacterNames, compareHistoryByCharacter, rangeStart, rangeEnd])
+
+  // グラフ用のデータ行。日付ごとに各キャラクターの所持数を持つ。
+  const compareChartRows = useMemo(() => {
+    if (compareCharacterNames.length === 0 || compareDates.length === 0) return null
+    return compareDates.map((date) => {
+      const row: Record<string, string | number | null> = { date: formatDateHeader(date) }
+      for (const name of compareCharacterNames) {
+        const rec = compareHistoryByCharacter.get(name)?.find((r) => r.date === date)
+        row[name] = rec ? rec.count : null
+      }
+      return row
+    })
+  }, [compareCharacterNames, compareHistoryByCharacter, compareDates])
+
   // 開始日と終了日それぞれ「以前で最新」の記録同士を比較する（両端がぴったり記録日でなくてもよい）。
   const summary = useMemo(() => {
     if (!rangeStart || !rangeEnd) return null
@@ -292,7 +402,7 @@ export function TrackedItemRecordsView({
   }, [historyByItem, rangeStart, rangeEnd, itemOrder])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-8">
       <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
         <h2 className="mr-2 text-base font-semibold">履歴</h2>
         <Badge variant="outline">AM6:00 更新</Badge>
@@ -413,15 +523,215 @@ export function TrackedItemRecordsView({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-hidden px-6 py-4">
+      <div className="px-6 py-4">
         {!pivotRows ? (
           <div className="text-muted-foreground py-8 text-center">読み込み中…</div>
+        ) : tab === 'chart' ? (
+          <div className="flex flex-col">
+            <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
+              <TabChip
+                label="アイテム別"
+                active={chartMode === 'item'}
+                onClick={() => setChartMode('item')}
+              />
+              <TabChip
+                label="キャラクター比較"
+                active={chartMode === 'character'}
+                onClick={() => setChartMode('character')}
+              />
+            </div>
+
+            {chartMode === 'item' ? (
+              chartRows && (
+                <>
+                  <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
+                    <button
+                      onClick={() =>
+                        setHiddenSeries((prev) =>
+                          prev.size > 0 ? new Set() : new Set(pivotRows?.map((row) => row.name))
+                        )
+                      }
+                      className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                    >
+                      {hiddenSeries.size > 0 ? 'すべて表示' : 'すべて非表示'}
+                    </button>
+                    {pivotRows?.map((row) => {
+                      const hidden = hiddenSeries.has(row.name)
+                      const color = chartConfig[row.name]?.color as string | undefined
+                      return (
+                        <button
+                          key={row.name}
+                          onClick={() => toggleSeries(row.name)}
+                          aria-pressed={!hidden}
+                          className={cn(
+                            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                            hidden
+                              ? 'text-muted-foreground opacity-50 hover:bg-accent'
+                              : 'hover:bg-accent'
+                          )}
+                        >
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                          {row.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <ChartContainer config={chartConfig} className="h-[420px] w-full">
+                    <LineChart data={chartRows} margin={{ left: 12, right: 12, top: 12 }}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        width={64}
+                        tickFormatter={(v: number) => v.toLocaleString()}
+                      />
+                      <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
+                      {pivotRows?.map((row) => (
+                        <Line
+                          key={row.name}
+                          type="monotone"
+                          dataKey={row.name}
+                          stroke={`var(--color-${row.name})`}
+                          strokeWidth={2}
+                          dot={false}
+                          connectNulls
+                          hide={hiddenSeries.has(row.name)}
+                        />
+                      ))}
+                    </LineChart>
+                  </ChartContainer>
+                </>
+              )
+            ) : (
+              <>
+                <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
+                  <span className="text-muted-foreground text-xs">アイテム</span>
+                  {orderedWatchedItems?.map((name) => (
+                    <TabChip
+                      key={name}
+                      label={name}
+                      active={chartCompareItem === name}
+                      onClick={() => setChartCompareItem(name)}
+                    />
+                  ))}
+                </div>
+                <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
+                  <span className="text-muted-foreground text-xs">キャラクター</span>
+                  <button
+                    onClick={() =>
+                      setChartCompareCharacters((prev) =>
+                        prev.size > 0 ? new Set() : new Set(characterNames)
+                      )
+                    }
+                    className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                  >
+                    {chartCompareCharacters.size > 0 ? 'すべて解除' : 'すべて選択'}
+                  </button>
+                  {characterNames.map((name) => {
+                    const active = chartCompareCharacters.has(name)
+                    return (
+                      <TabChip
+                        key={name}
+                        label={name}
+                        prefix={characterPrefixes?.get(name)}
+                        active={active}
+                        onClick={() => toggleCompareCharacter(name)}
+                      />
+                    )
+                  })}
+                </div>
+                {!chartCompareItem ? (
+                  <div className="text-muted-foreground py-8 text-center">
+                    比較するアイテムを選択してください。
+                  </div>
+                ) : !itemsWithCharacterData.has(chartCompareItem) ? (
+                  <div className="text-muted-foreground py-8 text-center">
+                    「{chartCompareItem}」はキャラクター別の内訳がありません。
+                    <br />
+                    アカウント金庫・キューブ・ソウルなど全キャラ共有のアイテムは、
+                    特定のキャラクターに帰属しないため比較できません。
+                  </div>
+                ) : !compareChartRows || compareCharacterNames.length === 0 ? (
+                  <div className="text-muted-foreground py-8 text-center">
+                    選択した条件に一致する記録がありません。キャラクターを選択するか、期間を広げてください。
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
+                      <button
+                        onClick={() =>
+                          setHiddenCompareSeries((prev) =>
+                            prev.size > 0 ? new Set() : new Set(compareCharacterNames)
+                          )
+                        }
+                        className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                      >
+                        {hiddenCompareSeries.size > 0 ? 'すべて表示' : 'すべて非表示'}
+                      </button>
+                      {compareCharacterNames.map((name) => {
+                        const hidden = hiddenCompareSeries.has(name)
+                        const color = compareChartConfig[name]?.color as string | undefined
+                        return (
+                          <button
+                            key={name}
+                            onClick={() => toggleCompareSeries(name)}
+                            aria-pressed={!hidden}
+                            className={cn(
+                              'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                              hidden
+                                ? 'text-muted-foreground opacity-50 hover:bg-accent'
+                                : 'hover:bg-accent'
+                            )}
+                          >
+                            <span
+                              className="size-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: color }}
+                            />
+                            {name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <ChartContainer config={compareChartConfig} className="h-[420px] w-full">
+                      <LineChart data={compareChartRows} margin={{ left: 12, right: 12, top: 12 }}>
+                        <CartesianGrid vertical={false} />
+                        <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                        <YAxis
+                          tickLine={false}
+                          axisLine={false}
+                          width={64}
+                          tickFormatter={(v: number) => v.toLocaleString()}
+                        />
+                        <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
+                        {compareCharacterNames.map((name) => (
+                          <Line
+                            key={name}
+                            type="monotone"
+                            dataKey={name}
+                            stroke={`var(--color-${name})`}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            hide={hiddenCompareSeries.has(name)}
+                          />
+                        ))}
+                      </LineChart>
+                    </ChartContainer>
+                  </>
+                )}
+              </>
+            )}
+          </div>
         ) : pivotRows.length === 0 ? (
           <div className="text-muted-foreground py-8 text-center">
             選択した期間に記録がありません。上でアイテム名を登録すると、AM6:00以降に自動で記録されます。
           </div>
         ) : tab === 'daily' ? (
-          <Table containerClassName="h-full overflow-auto">
+          <Table>
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow>
                 <TableHead className="sticky left-0 z-20 min-w-40 bg-background">
@@ -456,69 +766,6 @@ export function TrackedItemRecordsView({
               ))}
             </TableBody>
           </Table>
-        ) : tab === 'chart' ? (
-          chartRows && (
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
-                <button
-                  onClick={() =>
-                    setHiddenSeries((prev) =>
-                      prev.size > 0 ? new Set() : new Set(pivotRows?.map((row) => row.name))
-                    )
-                  }
-                  className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent"
-                >
-                  {hiddenSeries.size > 0 ? 'すべて表示' : 'すべて非表示'}
-                </button>
-                {pivotRows?.map((row) => {
-                  const hidden = hiddenSeries.has(row.name)
-                  const color = chartConfig[row.name]?.color as string | undefined
-                  return (
-                    <button
-                      key={row.name}
-                      onClick={() => toggleSeries(row.name)}
-                      aria-pressed={!hidden}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-                        hidden ? 'text-muted-foreground opacity-50 hover:bg-accent' : 'hover:bg-accent'
-                      )}
-                    >
-                      <span
-                        className="size-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: color }}
-                      />
-                      {row.name}
-                    </button>
-                  )
-                })}
-              </div>
-              <ChartContainer config={chartConfig} className="min-h-0 flex-1 w-full">
-                <LineChart data={chartRows} margin={{ left: 12, right: 12, top: 12 }}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    width={64}
-                    tickFormatter={(v: number) => v.toLocaleString()}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
-                  {pivotRows?.map((row) => (
-                    <Line
-                      key={row.name}
-                      type="monotone"
-                      dataKey={row.name}
-                      stroke={`var(--color-${row.name})`}
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls
-                      hide={hiddenSeries.has(row.name)}
-                    />
-                  ))}
-                </LineChart>
-              </ChartContainer>
-            </div>
-          )
         ) : (
           summary &&
           (summary.length === 0 ? (
@@ -526,14 +773,11 @@ export function TrackedItemRecordsView({
               選択した期間に比較できる記録がありません。
             </div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col">
+            <div className="flex flex-col">
               <h3 className="mb-2 flex shrink-0 items-center gap-2 text-sm font-semibold">
                 期間比較（{rangeStart} → {rangeEnd}）
               </h3>
-              <Table
-                className="table-fixed"
-                containerClassName="min-h-0 flex-1 overflow-auto"
-              >
+              <Table className="table-fixed">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead className="w-auto">アイテム名</TableHead>
