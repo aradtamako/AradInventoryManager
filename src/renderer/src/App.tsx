@@ -162,10 +162,16 @@ function App(): React.JSX.Element {
     if (!result) return
     const charNames = entries.filter((e) => !SHARED_NAMES.has(e.name)).map((e) => e.name)
     setCharacterOrder((prev) => {
-      const base = result.characterOrder?.filter((n) => charNames.includes(n)) ?? []
-      const existing = prev.filter((n) => charNames.includes(n) && !base.includes(n))
+      // 現在の並び順（ドラッグ操作等で確定済み）を優先し、DB の並び順は
+      // まだ prev に含まれていない名前（初回読み込みや新規キャラ）の位置決めにのみ使う。
+      // こうしないと、並び順に無関係な result 更新（タイプ変更など）のたびに
+      // 最後にファイルを読み込んだ時点の古い並び順へ巻き戻ってしまう。
+      const existing = prev.filter((n) => charNames.includes(n))
+      const base = (result.characterOrder ?? []).filter(
+        (n) => charNames.includes(n) && !existing.includes(n)
+      )
       const newNames = charNames.filter((n) => !base.includes(n) && !existing.includes(n))
-      const merged = [...base, ...existing, ...newNames]
+      const merged = [...existing, ...base, ...newNames]
       if (merged.length === prev.length && merged.every((n, i) => n === prev[i])) return prev
       return merged
     })
