@@ -107,6 +107,9 @@ export function TrackedItemRecordsView({
   const [chartCompareItem, setChartCompareItem] = useState('')
   // キャラクター比較モードで表示するキャラクター名の集合。
   const [chartCompareCharacters, setChartCompareCharacters] = useState<Set<string>>(new Set())
+  // chartCompareCharacters の初回自動初期化（全キャラ選択）が済んだかどうか。
+  // size === 0 だけで判定すると「すべて解除」操作が再初期化で打ち消されてしまうため、別途フラグで管理する。
+  const [chartCompareCharactersInitialized, setChartCompareCharactersInitialized] = useState(false)
   // キャラクター比較グラフの凡例クリックで非表示にしたキャラクター名。
   const [hiddenCompareSeries, setHiddenCompareSeries] = useState<Set<string>>(new Set())
   // バッジのドラッグ並び替えで確定した監視対象アイテムの表示順。表・グラフもこの順序に従う。
@@ -321,11 +324,12 @@ export function TrackedItemRecordsView({
 
   // キャラクター比較モードの対象キャラクターを、初回のみ全キャラクターで初期化する。
   useEffect(() => {
-    if (chartCompareCharacters.size > 0) return
+    if (chartCompareCharactersInitialized) return
     if (characterNames.length > 0) {
       setChartCompareCharacters(new Set(characterNames))
+      setChartCompareCharactersInitialized(true)
     }
-  }, [characterNames, chartCompareCharacters])
+  }, [characterNames, chartCompareCharactersInitialized])
 
   // 選択中アイテムについて、キャラクターごとの記録履歴（日付昇順）。
   const compareHistoryByCharacter = useMemo(() => {
