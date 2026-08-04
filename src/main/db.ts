@@ -56,35 +56,7 @@ function getDb(): DatabaseSync {
   } catch {
     // 既に存在していれば無視
   }
-  migrateLegacyCubeSoulTable(db)
   return db
-}
-
-// 旧実装（キューブ・ソウル専用の cube_soul_item_daily テーブル）が残っていれば、
-// 汎用の tracked_item_daily へ記録を引き継ぎ、監視対象アイテムとしても登録する。
-function migrateLegacyCubeSoulTable(db: DatabaseSync): void {
-  const legacyTable = db
-    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'cube_soul_item_daily'`)
-    .get()
-  if (!legacyTable) return
-
-  db.exec(`
-    INSERT OR IGNORE INTO tracked_item_daily (game_date, item_name, count, recorded_at)
-    SELECT game_date, item_name, count, recorded_at FROM cube_soul_item_daily
-  `)
-
-  const legacyItemNames = db
-    .prepare(`SELECT DISTINCT item_name FROM cube_soul_item_daily`)
-    .all() as { item_name: string }[]
-  const insertWatched = db.prepare(
-    `INSERT OR IGNORE INTO watched_items (name, created_at) VALUES (?, ?)`
-  )
-  const now = new Date().toISOString()
-  for (const { item_name: itemName } of legacyItemNames) {
-    insertWatched.run(itemName, now)
-  }
-
-  db.exec(`DROP TABLE cube_soul_item_daily`)
 }
 
 // 保存済みの全キャラクターを読み込む。JSON が壊れている行はスキップする。
