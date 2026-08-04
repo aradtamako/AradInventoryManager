@@ -459,7 +459,17 @@ export function TrackedItemRecordsView({
         ) : tab === 'chart' ? (
           chartRows && (
             <div className="flex h-full min-h-0 flex-col">
-              <div className="mb-2 flex shrink-0 flex-wrap gap-1.5">
+              <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() =>
+                    setHiddenSeries((prev) =>
+                      prev.size > 0 ? new Set() : new Set(pivotRows?.map((row) => row.name))
+                    )
+                  }
+                  className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                >
+                  {hiddenSeries.size > 0 ? 'すべて表示' : 'すべて非表示'}
+                </button>
                 {pivotRows?.map((row) => {
                   const hidden = hiddenSeries.has(row.name)
                   const color = chartConfig[row.name]?.color as string | undefined
