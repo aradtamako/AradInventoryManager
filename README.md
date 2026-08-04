@@ -1,6 +1,8 @@
 # Arad Inventory Manager
 
 <img width="1186" height="884" alt="image" src="https://github.com/user-attachments/assets/fcef5cc0-2d69-4c19-b413-446dddb5b5c4" />
+<img width="1503" height="767" alt="image" src="https://github.com/user-attachments/assets/3c4edf24-0e54-4c0b-bd2f-206478ed5b72" />
+<img width="1503" height="767" alt="image" src="https://github.com/user-attachments/assets/5b11eee6-0a1a-45d0-8b05-acadf8f9ee29" />
 
 DNF（アラド戦記）のトレースログからキャラクターごとのインベントリを読み込んで管理するデスクトップアプリです。
 
