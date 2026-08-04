@@ -41,3 +41,11 @@ export interface DailyTrackedItemRecord {
   count: number
   recordedAt: string
 }
+
+export interface DailyTrackedItemCharacterRecord {
+  date: string
+  itemName: string
+  characterName: string
+  count: number
+  recordedAt: string
+}
