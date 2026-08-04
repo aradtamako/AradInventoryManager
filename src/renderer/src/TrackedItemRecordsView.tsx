@@ -609,7 +609,7 @@ export function TrackedItemRecordsView({
                   {orderedWatchedItems?.map((name) => (
                     <TabChip
                       key={name}
-                      label={name}
+                      label={itemsWithCharacterData.has(name) ? name : `${name}（内訳なし）`}
                       active={chartCompareItem === name}
                       onClick={() => setChartCompareItem(name)}
                     />
@@ -644,9 +644,16 @@ export function TrackedItemRecordsView({
                   <div className="text-muted-foreground py-8 text-center">
                     比較するアイテムを選択してください。
                   </div>
+                ) : !itemsWithCharacterData.has(chartCompareItem) ? (
+                  <div className="text-muted-foreground py-8 text-center">
+                    「{chartCompareItem}」はキャラクター別の内訳がありません。
+                    <br />
+                    アカウント金庫・キューブ・ソウルなど全キャラ共有のアイテムは、
+                    特定のキャラクターに帰属しないため比較できません。
+                  </div>
                 ) : !compareChartRows || compareCharacterNames.length === 0 ? (
                   <div className="text-muted-foreground py-8 text-center">
-                    選択した条件に一致する記録がありません。
+                    選択した条件に一致する記録がありません。キャラクターを選択するか、期間を広げてください。
                   </div>
                 ) : (
                   <>
