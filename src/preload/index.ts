@@ -19,6 +19,9 @@ const api = {
     ipcRenderer.invoke('trackedItems:add', name),
   removeWatchedItem: (name: string): Promise<string[]> =>
     ipcRenderer.invoke('trackedItems:remove', name),
+  getWatchedItemOrder: (): Promise<string[]> => ipcRenderer.invoke('trackedItems:getOrder'),
+  saveWatchedItemOrder: (order: string[]): Promise<void> =>
+    ipcRenderer.invoke('trackedItems:saveOrder', order),
   // DNF.trc が変更され自動再読み込みされたときに呼ばれる。返り値は購読解除関数。
   onUpdate: (callback: (result: ParseResult) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, result: ParseResult): void => callback(result)
