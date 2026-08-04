@@ -362,9 +362,8 @@ export function TrackedItemRecordsView({
                     handleItemDrop(name, position, fromName)
                   }}
                   onDragEnd={() => setDropIndicator(null)}
-                  className="cursor-grab gap-1 pr-1 active:cursor-grabbing"
+                  className="cursor-grab gap-1 pl-1 active:cursor-grabbing"
                 >
-                  {name}
                   <button
                     onClick={() => void handleRemoveItem(name)}
                     aria-label={`${name} を監視対象から削除`}
@@ -372,6 +371,7 @@ export function TrackedItemRecordsView({
                   >
                     <X className="size-3" />
                   </button>
+                  {name}
                 </Badge>
                 {dropPos === 'after' && (
                   <span className="absolute -right-1 top-0.5 bottom-0.5 z-10 w-0.5 rounded-full bg-primary" />
