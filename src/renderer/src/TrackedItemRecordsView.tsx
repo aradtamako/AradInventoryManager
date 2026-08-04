@@ -402,7 +402,7 @@ export function TrackedItemRecordsView({
   }, [historyByItem, rangeStart, rangeEnd, itemOrder])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-8">
       <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
         <h2 className="mr-2 text-base font-semibold">履歴</h2>
         <Badge variant="outline">AM6:00 更新</Badge>
@@ -523,11 +523,11 @@ export function TrackedItemRecordsView({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-hidden px-6 py-4">
+      <div className="px-6 py-4">
         {!pivotRows ? (
           <div className="text-muted-foreground py-8 text-center">読み込み中…</div>
         ) : tab === 'chart' ? (
-          <div className="flex h-full min-h-0 flex-col">
+          <div className="flex flex-col">
             <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
               <TabChip
                 label="アイテム別"
@@ -579,7 +579,7 @@ export function TrackedItemRecordsView({
                       )
                     })}
                   </div>
-                  <ChartContainer config={chartConfig} className="min-h-0 flex-1 w-full">
+                  <ChartContainer config={chartConfig} className="h-[420px] w-full">
                     <LineChart data={chartRows} margin={{ left: 12, right: 12, top: 12 }}>
                       <CartesianGrid vertical={false} />
                       <XAxis dataKey="date" tickLine={false} axisLine={false} />
@@ -696,7 +696,7 @@ export function TrackedItemRecordsView({
                         )
                       })}
                     </div>
-                    <ChartContainer config={compareChartConfig} className="min-h-0 flex-1 w-full">
+                    <ChartContainer config={compareChartConfig} className="h-[420px] w-full">
                       <LineChart data={compareChartRows} margin={{ left: 12, right: 12, top: 12 }}>
                         <CartesianGrid vertical={false} />
                         <XAxis dataKey="date" tickLine={false} axisLine={false} />
@@ -731,7 +731,7 @@ export function TrackedItemRecordsView({
             選択した期間に記録がありません。上でアイテム名を登録すると、AM6:00以降に自動で記録されます。
           </div>
         ) : tab === 'daily' ? (
-          <Table containerClassName="h-full overflow-auto">
+          <Table>
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow>
                 <TableHead className="sticky left-0 z-20 min-w-40 bg-background">
@@ -773,14 +773,11 @@ export function TrackedItemRecordsView({
               選択した期間に比較できる記録がありません。
             </div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col">
+            <div className="flex flex-col">
               <h3 className="mb-2 flex shrink-0 items-center gap-2 text-sm font-semibold">
                 期間比較（{rangeStart} → {rangeEnd}）
               </h3>
-              <Table
-                className="table-fixed"
-                containerClassName="min-h-0 flex-1 overflow-auto"
-              >
+              <Table className="table-fixed">
                 <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead className="w-auto">アイテム名</TableHead>
