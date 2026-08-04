@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PanelLeft, Search } from 'lucide-react'
+import { CalendarClock, PanelLeft, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,7 @@ import {
   TableRow
 } from '@/components/ui/table'
 import type { CharacterInventory, InventoryItem, ItemList, ParseResult } from '@shared/types'
+import { TrackedItemRecordsView } from './TrackedItemRecordsView'
 
 function toSearchKey(s: string): string {
   return s.toLowerCase().replace(/[\u3041-\u3096]/g, (ch) =>
@@ -41,6 +42,7 @@ function App(): React.JSX.Element {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [showTrackedItems, setShowTrackedItems] = useState(false)
   const [characterOrder, setCharacterOrder] = useState<string[]>([])
   const [dropIndicator, setDropIndicator] = useState<{
     name: string
@@ -323,7 +325,7 @@ function App(): React.JSX.Element {
               : 'トレースログを読み込んでください'}
           </p>
         </div>
-        {result && (
+        {result && !showTrackedItems && (
           <div className="relative w-72">
             <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
             <Input
@@ -338,6 +340,21 @@ function App(): React.JSX.Element {
               </span>
             )}
           </div>
+        )}
+        {result && (
+          <button
+            onClick={() => setShowTrackedItems((v) => !v)}
+            aria-pressed={showTrackedItems}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors',
+              showTrackedItems
+                ? 'bg-primary text-primary-foreground border-transparent'
+                : 'hover:bg-accent'
+            )}
+          >
+            <CalendarClock className="size-4" />
+            アイテム監視記録
+          </button>
         )}
       </header>
 
@@ -404,6 +421,8 @@ function App(): React.JSX.Element {
       )}
       {!result ? (
         <EmptyState loading={loading} />
+      ) : showTrackedItems ? (
+        <TrackedItemRecordsView />
       ) : (
         <div className="flex min-h-0 flex-1">
           <aside
