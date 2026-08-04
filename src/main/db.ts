@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { app } from 'electron'
-import type { CharacterInventory, ItemList } from '../shared/types'
+import type { CharacterInventory, DailyTrackedItemRecord, ItemList } from '../shared/types'
 
 // DNF.trc はゲームを再起動すると初期化されるため、これまでに読み取ったキャラクター
 // ごとのインベントリを SQLite に保存しておき、trc が空になっても継続表示できるようにする。
@@ -26,13 +26,65 @@ function getDb(): DatabaseSync {
       updated_at TEXT NOT NULL
     )
   `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS meta (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `)
+  // ユーザーが監視対象として登録したアイテム名の一覧。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS watched_items (
+      name       TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL
+    )
+  `)
+  // AM6:00 を境界とする「ゲーム日」ごとの、監視対象アイテムの所持数の記録。
+  // 同じゲーム日・同じアイテムに何度書き込まれても最新の所持数で上書きし、日をまたいだら新しい行になる。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tracked_item_daily (
+      game_date   TEXT NOT NULL,
+      item_name   TEXT NOT NULL,
+      count       INTEGER NOT NULL,
+      recorded_at TEXT NOT NULL,
+      PRIMARY KEY (game_date, item_name)
+    )
+  `)
   // 既存 DB に prefix カラムが無い場合のマイグレーション
   try {
     db.exec(`ALTER TABLE characters ADD COLUMN prefix TEXT DEFAULT ''`)
   } catch {
     // 既に存在していれば無視
   }
+  migrateLegacyCubeSoulTable(db)
   return db
+}
+
+// 旧実装（キューブ・ソウル専用の cube_soul_item_daily テーブル）が残っていれば、
+// 汎用の tracked_item_daily へ記録を引き継ぎ、監視対象アイテムとしても登録する。
+function migrateLegacyCubeSoulTable(db: DatabaseSync): void {
+  const legacyTable = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'cube_soul_item_daily'`)
+    .get()
+  if (!legacyTable) return
+
+  db.exec(`
+    INSERT OR IGNORE INTO tracked_item_daily (game_date, item_name, count, recorded_at)
+    SELECT game_date, item_name, count, recorded_at FROM cube_soul_item_daily
+  `)
+
+  const legacyItemNames = db
+    .prepare(`SELECT DISTINCT item_name FROM cube_soul_item_daily`)
+    .all() as { item_name: string }[]
+  const insertWatched = db.prepare(
+    `INSERT OR IGNORE INTO watched_items (name, created_at) VALUES (?, ?)`
+  )
+  const now = new Date().toISOString()
+  for (const { item_name: itemName } of legacyItemNames) {
+    insertWatched.run(itemName, now)
+  }
+
+  db.exec(`DROP TABLE cube_soul_item_daily`)
 }
 
 // 保存済みの全キャラクターを読み込む。JSON が壊れている行はスキップする。
@@ -106,6 +158,67 @@ export function saveCharacterPrefix(name: string, prefix: string): void {
 
 export function deleteCharacter(name: string): void {
   getDb().prepare(`DELETE FROM characters WHERE name = ?`).run(name)
+}
+
+// AM6:00 を1日の境界とする「ゲーム日」を返す（6時未満なら前日扱い）。
+export function gameDateFor(d: Date): string {
+  const shifted = new Date(d.getTime() - 6 * 60 * 60 * 1000)
+  const y = shifted.getFullYear()
+  const m = String(shifted.getMonth() + 1).padStart(2, '0')
+  const day = String(shifted.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// 現在のゲーム日の、監視対象アイテムごとの所持数を記録（同日中は上書き、日をまたぐと新しい行になる）。
+export function upsertTrackedItemRecords(items: Map<string, number>, at: Date = new Date()): void {
+  const gameDate = gameDateFor(at)
+  const stmt = getDb().prepare(
+    `INSERT INTO tracked_item_daily (game_date, item_name, count, recorded_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(game_date, item_name) DO UPDATE SET
+       count = excluded.count,
+       recorded_at = excluded.recorded_at`
+  )
+  for (const [itemName, count] of items) {
+    stmt.run(gameDate, itemName, count, at.toISOString())
+  }
+}
+
+// 記録済みの全ゲーム日・全アイテムを古い順に返す。
+export function getTrackedItemRecords(): DailyTrackedItemRecord[] {
+  const rows = getDb()
+    .prepare(
+      'SELECT game_date, item_name, count, recorded_at FROM tracked_item_daily ORDER BY game_date ASC, item_name ASC'
+    )
+    .all() as { game_date: string; item_name: string; count: number; recorded_at: string }[]
+  return rows.map((r) => ({
+    date: r.game_date,
+    itemName: r.item_name,
+    count: r.count,
+    recordedAt: r.recorded_at
+  }))
+}
+
+// 監視対象アイテム名の一覧（登録順）。
+export function getWatchedItemNames(): string[] {
+  const rows = getDb()
+    .prepare('SELECT name FROM watched_items ORDER BY created_at ASC')
+    .all() as { name: string }[]
+  return rows.map((r) => r.name)
+}
+
+// アイテム名を監視対象に追加する。既に登録済みなら何もしない。
+export function addWatchedItem(name: string): void {
+  const trimmed = name.trim()
+  if (!trimmed) return
+  getDb()
+    .prepare(`INSERT OR IGNORE INTO watched_items (name, created_at) VALUES (?, ?)`)
+    .run(trimmed, new Date().toISOString())
+}
+
+// アイテム名を監視対象から外す。過去に記録済みの日次データは履歴として残す。
+export function removeWatchedItem(name: string): void {
+  getDb().prepare(`DELETE FROM watched_items WHERE name = ?`).run(name)
 }
 
 export function closeDb(): void {
