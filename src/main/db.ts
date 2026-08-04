@@ -104,6 +104,10 @@ export function saveCharacterPrefix(name: string, prefix: string): void {
     .run(prefix, name)
 }
 
+export function deleteCharacter(name: string): void {
+  getDb().prepare(`DELETE FROM characters WHERE name = ?`).run(name)
+}
+
 export function closeDb(): void {
   db?.close()
   db = null
