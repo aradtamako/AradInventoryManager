@@ -209,7 +209,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+      <div className="min-h-0 flex-1 overflow-hidden px-6 py-4">
         {!pivotRows ? (
           <div className="text-muted-foreground py-8 text-center">読み込み中…</div>
         ) : pivotRows.length === 0 ? (
@@ -217,7 +217,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
             選択した期間に記録がありません。上でアイテム名を登録すると、AM6:00以降に自動で記録されます。
           </div>
         ) : tab === 'daily' ? (
-          <Table containerClassName="max-h-[calc(100vh-320px)] overflow-auto">
+          <Table containerClassName="h-full overflow-auto">
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow>
                 <TableHead className="sticky left-0 z-20 min-w-40 bg-background">
@@ -252,12 +252,15 @@ export function TrackedItemRecordsView(): React.JSX.Element {
               選択した期間に比較できる記録がありません。
             </div>
           ) : (
-            <div>
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <div className="flex h-full min-h-0 flex-col">
+              <h3 className="mb-2 flex shrink-0 items-center gap-2 text-sm font-semibold">
                 期間比較（{rangeStart} → {rangeEnd}）
               </h3>
-              <Table className="table-fixed">
-                <TableHeader>
+              <Table
+                className="table-fixed"
+                containerClassName="min-h-0 flex-1 overflow-auto"
+              >
+                <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead className="w-auto">アイテム名</TableHead>
                     <TableHead className="w-[140px] text-right">開始日所持数</TableHead>
