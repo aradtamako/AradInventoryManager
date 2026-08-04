@@ -36,7 +36,7 @@ const CHART_PALETTE = [
 
 function diffClass(diff: number | null): string {
   return cn(
-    'text-right font-mono tabular-nums',
+    'font-mono tabular-nums',
     diff !== null && diff > 0 && 'text-emerald-500',
     diff !== null && diff < 0 && 'text-destructive'
   )
@@ -50,6 +50,17 @@ function formatDiff(diff: number | null): string {
 function formatDateHeader(date: string): string {
   const [, m, d] = date.split('-')
   return `${m}/${d}`
+}
+
+// アイテム名を itemOrder（バッジの並び順）に従って並べる。
+// itemOrder に無い名前（削除済みだが履歴が残っているアイテム等）は末尾に五十音順で追加する。
+function orderItemNames(names: string[], order: string[]): string[] {
+  const orderMap = new Map(order.map((name, i) => [name, i]))
+  const known = names
+    .filter((n) => orderMap.has(n))
+    .sort((a, b) => orderMap.get(a)! - orderMap.get(b)!)
+  const unknown = names.filter((n) => !orderMap.has(n)).sort((a, b) => a.localeCompare(b, 'ja'))
+  return [...known, ...unknown]
 }
 
 // 指定日以前で最も新しいそのアイテムの記録を返す（その日ちょうどの記録が無い場合に使う）。
@@ -78,6 +89,12 @@ export function TrackedItemRecordsView(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('daily')
   // グラフの凡例クリックで非表示にしたアイテム名。
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set())
+  // バッジのドラッグ並び替えで確定した監視対象アイテムの表示順。表・グラフもこの順序に従う。
+  const [itemOrder, setItemOrder] = useState<string[]>([])
+  const [dropIndicator, setDropIndicator] = useState<{
+    name: string
+    position: 'before' | 'after'
+  } | null>(null)
 
   function toggleSeries(name: string): void {
     setHiddenSeries((prev) => {
@@ -91,6 +108,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
   useEffect(() => {
     void window.api.getTrackedItemRecords().then(setRecords)
     void window.api.listWatchedItems().then(setWatchedItems)
+    void window.api.getWatchedItemOrder().then(setItemOrder)
   }, [])
 
   async function handleAddItem(): Promise<void> {
@@ -102,6 +120,50 @@ export function TrackedItemRecordsView(): React.JSX.Element {
 
   async function handleRemoveItem(name: string): Promise<void> {
     setWatchedItems(await window.api.removeWatchedItem(name))
+    setItemOrder((prev) => prev.filter((n) => n !== name))
+  }
+
+  // watchedItems（DB の登録順）を土台に、確定済みの並び順（ドラッグ操作 or DB 由来）を反映する。
+  // 新規追加されたアイテムは末尾に、削除されたアイテムは自動的に除外される。
+  useEffect(() => {
+    if (!watchedItems) return
+    setItemOrder((prev) => {
+      const existing = prev.filter((n) => watchedItems.includes(n))
+      const newNames = watchedItems.filter((n) => !existing.includes(n))
+      const merged = [...existing, ...newNames]
+      if (merged.length === prev.length && merged.every((n, i) => n === prev[i])) return prev
+      return merged
+    })
+  }, [watchedItems])
+
+  // 並び順が変わったら DB に保存
+  useEffect(() => {
+    if (itemOrder.length > 0) void window.api.saveWatchedItemOrder(itemOrder)
+  }, [itemOrder])
+
+  // itemOrder に従って並び替えたバッジ一覧
+  const orderedWatchedItems = useMemo(() => {
+    if (!watchedItems) return null
+    const orderMap = new Map(itemOrder.map((name, i) => [name, i]))
+    return [...watchedItems].sort(
+      (a, b) => (orderMap.get(a) ?? Infinity) - (orderMap.get(b) ?? Infinity)
+    )
+  }, [watchedItems, itemOrder])
+
+  function handleItemDrop(targetName: string, position: 'before' | 'after', fromName: string): void {
+    if (!fromName || fromName === targetName) return
+    setItemOrder((prev) => {
+      const newOrder = [...prev]
+      const fromIdx = newOrder.indexOf(fromName)
+      const toIdx = newOrder.indexOf(targetName)
+      if (fromIdx === -1 || toIdx === -1) return prev
+      newOrder.splice(fromIdx, 1)
+      let insertAt = newOrder.indexOf(targetName)
+      if (position === 'after') insertAt++
+      newOrder.splice(insertAt, 0, fromName)
+      return newOrder
+    })
+    setDropIndicator(null)
   }
 
   const allDates = useMemo(() => {
@@ -135,10 +197,10 @@ export function TrackedItemRecordsView(): React.JSX.Element {
     return allDates.filter((d) => d >= rangeStart && d <= rangeEnd)
   }, [allDates, rangeStart, rangeEnd])
 
-  // アイテム × 日付の行列。セルの値はその日の前日（直前記録）との差分。
+  // アイテム × 日付の行列。セルにはその日の所持数と、前日（直前記録）との差分を持たせる。
   const pivotRows = useMemo(() => {
     if (rangeDates.length === 0) return null
-    const itemNames = [...historyByItem.keys()].sort((a, b) => a.localeCompare(b, 'ja'))
+    const itemNames = orderItemNames([...historyByItem.keys()], itemOrder)
     return itemNames
       .map((name) => {
         const history = historyByItem.get(name)!
@@ -148,12 +210,12 @@ export function TrackedItemRecordsView(): React.JSX.Element {
           if (!cur) return null
           const idx = history.indexOf(cur)
           const prev = history[idx - 1]
-          return prev ? cur.count - prev.count : null
+          return { count: cur.count, diff: prev ? cur.count - prev.count : null }
         })
         return { name, cells }
       })
       .filter((row) => row.cells.some((c) => c !== null))
-  }, [historyByItem, rangeDates])
+  }, [historyByItem, rangeDates, itemOrder])
 
   // グラフ用の設定（アイテム名ごとにラベルと色を割り当てる）。行と同じアイテム集合を使う。
   const chartConfig = useMemo<ChartConfig>(() => {
@@ -180,7 +242,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
   // 開始日と終了日それぞれ「以前で最新」の記録同士を比較する（両端がぴったり記録日でなくてもよい）。
   const summary = useMemo(() => {
     if (!rangeStart || !rangeEnd) return null
-    const itemNames = [...historyByItem.keys()].sort((a, b) => a.localeCompare(b, 'ja'))
+    const itemNames = orderItemNames([...historyByItem.keys()], itemOrder)
     return itemNames
       .map((name) => {
         const history = historyByItem.get(name)!
@@ -191,7 +253,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
         return { name, start, end, diff }
       })
       .filter((v): v is NonNullable<typeof v> => v !== null)
-  }, [historyByItem, rangeStart, rangeEnd])
+  }, [historyByItem, rangeStart, rangeEnd, itemOrder])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -216,19 +278,56 @@ export function TrackedItemRecordsView(): React.JSX.Element {
           追加
         </Button>
         <div className="flex flex-wrap items-center gap-1.5">
-          {watchedItems?.map((name) => (
-            <Badge key={name} variant="secondary" className="gap-1 pr-1">
-              {name}
-              <button
-                onClick={() => void handleRemoveItem(name)}
-                aria-label={`${name} を監視対象から削除`}
-                className="hover:bg-muted-foreground/20 rounded-full p-0.5"
-              >
-                <X className="size-3" />
-              </button>
-            </Badge>
-          ))}
-          {watchedItems && watchedItems.length === 0 && (
+          {orderedWatchedItems?.map((name) => {
+            const dropPos = dropIndicator?.name === name ? dropIndicator.position : null
+            return (
+              <span key={name} className="relative">
+                {dropPos === 'before' && (
+                  <span className="absolute -left-1 top-0.5 bottom-0.5 z-10 w-0.5 rounded-full bg-primary" />
+                )}
+                <Badge
+                  variant="secondary"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('text/plain', name)
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const position = e.clientX - rect.left < rect.width / 2 ? 'before' : 'after'
+                    setDropIndicator({ name, position })
+                  }}
+                  onDragLeave={(e) => {
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+                    setDropIndicator(null)
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const fromName = e.dataTransfer.getData('text/plain')
+                    const position = dropIndicator?.position ?? 'before'
+                    handleItemDrop(name, position, fromName)
+                  }}
+                  onDragEnd={() => setDropIndicator(null)}
+                  className="cursor-grab gap-1 pr-1 active:cursor-grabbing"
+                >
+                  {name}
+                  <button
+                    onClick={() => void handleRemoveItem(name)}
+                    aria-label={`${name} を監視対象から削除`}
+                    className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+                {dropPos === 'after' && (
+                  <span className="absolute -right-1 top-0.5 bottom-0.5 z-10 w-0.5 rounded-full bg-primary" />
+                )}
+              </span>
+            )
+          })}
+          {orderedWatchedItems && orderedWatchedItems.length === 0 && (
             <span className="text-muted-foreground text-xs">監視中のアイテムはありません</span>
           )}
         </div>
@@ -277,7 +376,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
                   アイテム名
                 </TableHead>
                 {rangeDates.map((date) => (
-                  <TableHead key={date} className="w-[90px] text-right">
+                  <TableHead key={date} className="w-[100px] text-right">
                     {formatDateHeader(date)}
                   </TableHead>
                 ))}
@@ -289,9 +388,16 @@ export function TrackedItemRecordsView(): React.JSX.Element {
                   <TableCell className="sticky left-0 z-10 bg-background font-medium">
                     {row.name}
                   </TableCell>
-                  {row.cells.map((diff, i) => (
-                    <TableCell key={rangeDates[i]} className={diffClass(diff)}>
-                      {formatDiff(diff)}
+                  {row.cells.map((cell, i) => (
+                    <TableCell key={rangeDates[i]} className="text-right">
+                      {cell && (
+                        <div className="flex flex-col leading-tight">
+                          <span className={diffClass(cell.diff)}>{formatDiff(cell.diff)}</span>
+                          <span className="text-muted-foreground font-mono text-xs tabular-nums">
+                            {cell.count.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -384,7 +490,9 @@ export function TrackedItemRecordsView(): React.JSX.Element {
                       <TableCell className="text-right font-mono tabular-nums">
                         {s.end ? s.end.count.toLocaleString() : '—'}
                       </TableCell>
-                      <TableCell className={diffClass(s.diff)}>{formatDiff(s.diff)}</TableCell>
+                      <TableCell className={cn('text-right', diffClass(s.diff))}>
+                        {formatDiff(s.diff)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
