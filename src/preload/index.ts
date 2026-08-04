@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { DailyTrackedItemRecord, ParseResult } from '../shared/types'
+import type { DailyTrackedItemCharacterRecord, DailyTrackedItemRecord, ParseResult } from '../shared/types'
 
 const api = {
   openFile: (): Promise<ParseResult | null> => ipcRenderer.invoke('inventory:openFile'),
@@ -14,6 +14,8 @@ const api = {
     ipcRenderer.invoke('inventory:deleteCharacter', name),
   getTrackedItemRecords: (): Promise<DailyTrackedItemRecord[]> =>
     ipcRenderer.invoke('trackedItems:getRecords'),
+  getTrackedItemCharacterRecords: (): Promise<DailyTrackedItemCharacterRecord[]> =>
+    ipcRenderer.invoke('trackedItems:getCharacterRecords'),
   listWatchedItems: (): Promise<string[]> => ipcRenderer.invoke('trackedItems:list'),
   addWatchedItem: (name: string): Promise<string[]> =>
     ipcRenderer.invoke('trackedItems:add', name),
