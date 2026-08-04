@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, X } from 'lucide-react'
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig
+} from '@/components/ui/chart'
 import { DatePicker } from '@/components/DatePicker'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -14,6 +21,18 @@ import {
   TableRow
 } from '@/components/ui/table'
 import type { DailyTrackedItemRecord } from '@shared/types'
+
+// アイテムごとの折れ線に割り当てる色（監視アイテム数がこれより多い場合は循環させる）。
+const CHART_PALETTE = [
+  '#34d399',
+  '#38bdf8',
+  '#fbbf24',
+  '#a78bfa',
+  '#fb7185',
+  '#22d3ee',
+  '#a3e635',
+  '#fb923c'
+]
 
 function diffClass(diff: number | null): string {
   return cn(
@@ -48,7 +67,7 @@ function latestOnOrBefore(
 
 // AM6:00 を境界としたゲーム日ごとに、監視対象アイテムの所持数と増減を、指定した期間で一覧表示する。
 // 監視対象アイテムはユーザーが自由に追加・削除でき、キューブ・ソウル以外の任意のアイテムを追跡できる。
-type Tab = 'daily' | 'period'
+type Tab = 'daily' | 'period' | 'chart'
 
 export function TrackedItemRecordsView(): React.JSX.Element {
   const [records, setRecords] = useState<DailyTrackedItemRecord[] | null>(null)
@@ -57,6 +76,17 @@ export function TrackedItemRecordsView(): React.JSX.Element {
   const [rangeStart, setRangeStart] = useState('')
   const [rangeEnd, setRangeEnd] = useState('')
   const [tab, setTab] = useState<Tab>('daily')
+  // グラフの凡例クリックで非表示にしたアイテム名。
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set())
+
+  function toggleSeries(name: string): void {
+    setHiddenSeries((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   useEffect(() => {
     void window.api.getTrackedItemRecords().then(setRecords)
@@ -124,6 +154,28 @@ export function TrackedItemRecordsView(): React.JSX.Element {
       })
       .filter((row) => row.cells.some((c) => c !== null))
   }, [historyByItem, rangeDates])
+
+  // グラフ用の設定（アイテム名ごとにラベルと色を割り当てる）。行と同じアイテム集合を使う。
+  const chartConfig = useMemo<ChartConfig>(() => {
+    const config: ChartConfig = {}
+    pivotRows?.forEach((row, i) => {
+      config[row.name] = { label: row.name, color: CHART_PALETTE[i % CHART_PALETTE.length] }
+    })
+    return config
+  }, [pivotRows])
+
+  // グラフ用のデータ行。日付ごとに各アイテムの所持数（差分ではなく実数）を持つ。
+  const chartRows = useMemo(() => {
+    if (!pivotRows || rangeDates.length === 0) return null
+    return rangeDates.map((date) => {
+      const row: Record<string, string | number | null> = { date: formatDateHeader(date) }
+      for (const item of pivotRows) {
+        const rec = historyByItem.get(item.name)?.find((r) => r.date === date)
+        row[item.name] = rec ? rec.count : null
+      }
+      return row
+    })
+  }, [pivotRows, historyByItem, rangeDates])
 
   // 開始日と終了日それぞれ「以前で最新」の記録同士を比較する（両端がぴったり記録日でなくてもよい）。
   const summary = useMemo(() => {
@@ -206,6 +258,7 @@ export function TrackedItemRecordsView(): React.JSX.Element {
         <div className="flex flex-wrap gap-1.5 border-b px-6 py-2">
           <TabChip label="日次比較" active={tab === 'daily'} onClick={() => setTab('daily')} />
           <TabChip label="期間比較" active={tab === 'period'} onClick={() => setTab('period')} />
+          <TabChip label="グラフ" active={tab === 'chart'} onClick={() => setTab('chart')} />
         </div>
       )}
 
@@ -245,6 +298,59 @@ export function TrackedItemRecordsView(): React.JSX.Element {
               ))}
             </TableBody>
           </Table>
+        ) : tab === 'chart' ? (
+          chartRows && (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="mb-2 flex shrink-0 flex-wrap gap-1.5">
+                {pivotRows?.map((row) => {
+                  const hidden = hiddenSeries.has(row.name)
+                  const color = chartConfig[row.name]?.color as string | undefined
+                  return (
+                    <button
+                      key={row.name}
+                      onClick={() => toggleSeries(row.name)}
+                      aria-pressed={!hidden}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                        hidden ? 'text-muted-foreground opacity-50 hover:bg-accent' : 'hover:bg-accent'
+                      )}
+                    >
+                      <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: color }}
+                      />
+                      {row.name}
+                    </button>
+                  )
+                })}
+              </div>
+              <ChartContainer config={chartConfig} className="min-h-0 flex-1 w-full">
+                <LineChart data={chartRows} margin={{ left: 12, right: 12, top: 12 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={64}
+                    tickFormatter={(v: number) => v.toLocaleString()}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
+                  {pivotRows?.map((row) => (
+                    <Line
+                      key={row.name}
+                      type="monotone"
+                      dataKey={row.name}
+                      stroke={`var(--color-${row.name})`}
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                      hide={hiddenSeries.has(row.name)}
+                    />
+                  ))}
+                </LineChart>
+              </ChartContainer>
+            </div>
+          )
         ) : (
           summary &&
           (summary.length === 0 ? (
