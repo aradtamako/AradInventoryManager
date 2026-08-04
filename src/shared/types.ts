@@ -34,3 +34,10 @@ export interface ParseResult {
 export interface ParseError {
   error: string
 }
+
+export interface DailyTrackedItemRecord {
+  date: string
+  itemName: string
+  count: number
+  recordedAt: string
+}

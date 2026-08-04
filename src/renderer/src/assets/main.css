@@ -2,6 +2,9 @@
 @import 'tw-animate-css';
 
 :root {
+  /* ダークテーマ専用のため、フォームコントロール（date input のカレンダーアイコン等）も
+     ダーク配色でレンダリングさせる。無指定だとライト配色になり、暗い背景の上で見えなくなる。 */
+  color-scheme: dark;
   --radius: 0.625rem;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

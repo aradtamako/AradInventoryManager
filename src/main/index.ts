@@ -3,8 +3,57 @@ import { join } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { mergeCharacter, parseTraceLog } from '../shared/parser'
 import { decodeTrc, watchTrc, type TrcWatcher, DNF_TRC_PATH } from './trc'
-import { closeDb, deleteCharacter, getCharacterOrder, getStoredCharacters, saveCharacterOrder, saveCharacterPrefix, upsertCharacter } from './db'
+import {
+  addWatchedItem,
+  closeDb,
+  deleteCharacter,
+  getCharacterOrder,
+  getStoredCharacters,
+  getTrackedItemRecords,
+  getWatchedItemNames,
+  removeWatchedItem,
+  saveCharacterOrder,
+  saveCharacterPrefix,
+  upsertCharacter,
+  upsertTrackedItemRecords
+} from './db'
 import type { CharacterInventory, ParseResult } from '../shared/types'
+
+// アカウント全体で共有されるストレージ（リスト1: アカウント金庫、リスト9: キューブ・ソウル）は
+// キャラクターごとの trc セッションに同じ内容が重複して出現するため、最もアイテム数が多い
+// スナップショットだけを採用する。それ以外のストレージはキャラクターごとに所持品が異なるため、
+// 全キャラクター分をそのまま合算する。
+const SHARED_STORAGES = new Set(['リスト1', 'リスト9'])
+
+// 監視対象アイテム名ごとに、全キャラクター・全ストレージを横断した所持数の合計を返す。
+function extractTrackedItemCounts(
+  characters: CharacterInventory[],
+  watchedNames: Set<string>
+): Map<string, number> {
+  const counts = new Map<string, number>()
+  if (watchedNames.size === 0) return counts
+
+  const bestShared = new Map<string, CharacterInventory['lists'][number]>()
+  const addItem = (item: { name: string; data: number }): void => {
+    if (!watchedNames.has(item.name)) return
+    counts.set(item.name, (counts.get(item.name) ?? 0) + item.data)
+  }
+
+  for (const c of characters) {
+    for (const list of c.lists) {
+      if (SHARED_STORAGES.has(list.storage)) {
+        const prev = bestShared.get(list.storage)
+        if (!prev || list.items.length > prev.items.length) bestShared.set(list.storage, list)
+        continue
+      }
+      for (const item of list.items) addItem(item)
+    }
+  }
+  for (const list of bestShared.values()) {
+    for (const item of list.items) addItem(item)
+  }
+  return counts
+}
 
 let trcWatcher: TrcWatcher | null = null
 
@@ -28,6 +77,11 @@ async function loadInventory(): Promise<ParseResult> {
 
   const characters = [...byName.values()]
   const characterOrder = getCharacterOrder()
+
+  const watchedNames = new Set(getWatchedItemNames())
+  const trackedCounts = extractTrackedItemCounts(characters, watchedNames)
+  if (trackedCounts.size > 0) upsertTrackedItemRecords(trackedCounts)
+
   return { characters, sourcePath: DNF_TRC_PATH, parsedAt: new Date().toISOString(), characterOrder }
 }
 
@@ -100,6 +154,28 @@ app.whenReady().then(() => {
   // キャラクターのデータを DB から完全に削除する
   ipcMain.handle('inventory:deleteCharacter', async (_event, name: string): Promise<void> => {
     deleteCharacter(name)
+  })
+
+  // 監視対象アイテムの日次記録一覧（AM6:00 境界のゲーム日ごと）
+  ipcMain.handle('trackedItems:getRecords', async () => {
+    return getTrackedItemRecords()
+  })
+
+  // 監視対象アイテム名の一覧
+  ipcMain.handle('trackedItems:list', async () => {
+    return getWatchedItemNames()
+  })
+
+  // 監視対象アイテムを追加
+  ipcMain.handle('trackedItems:add', async (_event, name: string) => {
+    addWatchedItem(name)
+    return getWatchedItemNames()
+  })
+
+  // 監視対象アイテムを削除（過去の記録は残す）
+  ipcMain.handle('trackedItems:remove', async (_event, name: string) => {
+    removeWatchedItem(name)
+    return getWatchedItemNames()
   })
 
   createWindow()
