@@ -11,9 +11,11 @@ import {
   getStoredCharacters,
   getTrackedItemRecords,
   getWatchedItemNames,
+  getWatchedItemOrder,
   removeWatchedItem,
   saveCharacterOrder,
   saveCharacterPrefix,
+  saveWatchedItemOrder,
   upsertCharacter,
   upsertTrackedItemRecords
 } from './db'
@@ -176,6 +178,15 @@ app.whenReady().then(() => {
   ipcMain.handle('trackedItems:remove', async (_event, name: string) => {
     removeWatchedItem(name)
     return getWatchedItemNames()
+  })
+
+  // 監視対象アイテムのバッジ表示順
+  ipcMain.handle('trackedItems:getOrder', async () => {
+    return getWatchedItemOrder()
+  })
+
+  ipcMain.handle('trackedItems:saveOrder', async (_event, order: string[]) => {
+    saveWatchedItemOrder(order)
   })
 
   createWindow()

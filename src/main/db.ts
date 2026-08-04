@@ -193,6 +193,28 @@ export function removeWatchedItem(name: string): void {
   getDb().prepare(`DELETE FROM watched_items WHERE name = ?`).run(name)
 }
 
+// 監視対象アイテムの表示順（バッジのドラッグ並び替えで確定した順序）。
+export function getWatchedItemOrder(): string[] {
+  const row = getDb()
+    .prepare('SELECT value FROM meta WHERE key = ?')
+    .get('watched_item_order') as { value: string } | undefined
+  if (!row) return []
+  try {
+    return JSON.parse(row.value) as string[]
+  } catch {
+    return []
+  }
+}
+
+export function saveWatchedItemOrder(order: string[]): void {
+  getDb()
+    .prepare(
+      `INSERT INTO meta (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run('watched_item_order', JSON.stringify(order))
+}
+
 export function closeDb(): void {
   db?.close()
   db = null
