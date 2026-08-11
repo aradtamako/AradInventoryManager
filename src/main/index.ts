@@ -207,7 +207,7 @@ app.whenReady().then(() => {
     return getWatchedItemNames()
   })
 
-  // 監視対象アイテムを削除（過去の記録は残す）
+  // 監視対象アイテムを削除（過去の日次記録もまとめて削除する）
   ipcMain.handle('trackedItems:remove', async (_event, name: string) => {
     removeWatchedItem(name)
     return getWatchedItemNames()
