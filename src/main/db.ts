@@ -251,9 +251,13 @@ export function addWatchedItem(name: string): void {
     .run(trimmed, new Date().toISOString())
 }
 
-// アイテム名を監視対象から外す。過去に記録済みの日次データは履歴として残す。
+// アイテム名を監視対象から外す。過去に記録した日次データ（全キャラ合計・キャラクター別とも）も
+// まとめて削除する。この操作は取り消せない。
 export function removeWatchedItem(name: string): void {
-  getDb().prepare(`DELETE FROM watched_items WHERE name = ?`).run(name)
+  const database = getDb()
+  database.prepare(`DELETE FROM watched_items WHERE name = ?`).run(name)
+  database.prepare(`DELETE FROM tracked_item_daily WHERE item_name = ?`).run(name)
+  database.prepare(`DELETE FROM tracked_item_daily_by_character WHERE item_name = ?`).run(name)
 }
 
 // 監視対象アイテムの表示順（バッジのドラッグ並び替えで確定した順序）。

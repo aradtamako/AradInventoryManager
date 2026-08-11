@@ -53,7 +53,7 @@ function formatDateHeader(date: string): string {
 }
 
 // アイテム名を itemOrder（バッジの並び順）に従って並べる。
-// itemOrder に無い名前（削除済みだが履歴が残っているアイテム等）は末尾に五十音順で追加する。
+// itemOrder に無い名前は末尾に五十音順で追加する。
 function orderItemNames(names: string[], order: string[]): string[] {
   const orderMap = new Map(order.map((name, i) => [name, i]))
   const known = names
@@ -178,9 +178,16 @@ export function TrackedItemRecordsView({
     setWatchedItems(await window.api.addWatchedItem(name))
   }
 
+  // 監視対象から外すと、そのアイテムの日次記録も DB から削除される（取り消せない）ため確認する。
   async function handleRemoveItem(name: string): Promise<void> {
+    if (!window.confirm(`「${name}」を監視対象から削除します。\n記録済みの履歴もすべて消えます。`)) {
+      return
+    }
     setWatchedItems(await window.api.removeWatchedItem(name))
     setItemOrder((prev) => prev.filter((n) => n !== name))
+    // 削除で DB 側の記録が消えているので、表・グラフの土台になるデータを取り直す。
+    setRecords(await window.api.getTrackedItemRecords())
+    setCharRecords(await window.api.getTrackedItemCharacterRecords())
   }
 
   // watchedItems（DB の登録順）を土台に、確定済みの並び順（ドラッグ操作 or DB 由来）を反映する。
@@ -257,6 +264,17 @@ export function TrackedItemRecordsView({
     return map
   }, [activeRecords])
 
+  // 表・グラフに出すアイテム名（表示順）。監視対象から外したアイテムは、
+  // DB に日次記録が残っていても一覧から除外する。
+  const visibleItemNames = useMemo(() => {
+    if (!watchedItems) return null
+    const watched = new Set(watchedItems)
+    return orderItemNames(
+      [...historyByItem.keys()].filter((name) => watched.has(name)),
+      itemOrder
+    )
+  }, [historyByItem, watchedItems, itemOrder])
+
   // 選択期間内の日付一覧（列見出し用、昇順）。
   const rangeDates = useMemo(() => {
     if (!rangeStart || !rangeEnd) return []
@@ -265,9 +283,8 @@ export function TrackedItemRecordsView({
 
   // アイテム × 日付の行列。セルにはその日の所持数と、前日（直前記録）との差分を持たせる。
   const pivotRows = useMemo(() => {
-    if (rangeDates.length === 0) return null
-    const itemNames = orderItemNames([...historyByItem.keys()], itemOrder)
-    return itemNames
+    if (rangeDates.length === 0 || !visibleItemNames) return null
+    return visibleItemNames
       .map((name) => {
         const history = historyByItem.get(name)!
         const byDate = new Map(history.map((r) => [r.date, r]))
@@ -281,7 +298,7 @@ export function TrackedItemRecordsView({
         return { name, cells }
       })
       .filter((row) => row.cells.some((c) => c !== null))
-  }, [historyByItem, rangeDates, itemOrder])
+  }, [historyByItem, rangeDates, visibleItemNames])
 
   // グラフ用の設定（アイテム名ごとにラベルと色を割り当てる）。行と同じアイテム集合を使う。
   const chartConfig = useMemo<ChartConfig>(() => {
@@ -313,11 +330,15 @@ export function TrackedItemRecordsView({
     return new Set(charRecords.map((r) => r.itemName))
   }, [charRecords])
 
-  // キャラクター比較モードの対象アイテムを初期化する（未選択のときのみ）。
-  // キャラクター別の内訳があるアイテムを優先し、無ければ先頭のアイテムにフォールバックする。
+  // キャラクター比較モードの対象アイテムを初期化する（未選択、または選択中のアイテムが
+  // 監視対象から外されたとき）。キャラクター別の内訳があるアイテムを優先し、無ければ先頭にフォールバックする。
   useEffect(() => {
-    if (chartCompareItem) return
-    if (!orderedWatchedItems || orderedWatchedItems.length === 0) return
+    if (!orderedWatchedItems) return
+    if (chartCompareItem && orderedWatchedItems.includes(chartCompareItem)) return
+    if (orderedWatchedItems.length === 0) {
+      setChartCompareItem('')
+      return
+    }
     const withData = orderedWatchedItems.find((n) => itemsWithCharacterData.has(n))
     setChartCompareItem(withData ?? orderedWatchedItems[0])
   }, [orderedWatchedItems, chartCompareItem, itemsWithCharacterData])
@@ -387,9 +408,8 @@ export function TrackedItemRecordsView({
 
   // 開始日と終了日それぞれ「以前で最新」の記録同士を比較する（両端がぴったり記録日でなくてもよい）。
   const summary = useMemo(() => {
-    if (!rangeStart || !rangeEnd) return null
-    const itemNames = orderItemNames([...historyByItem.keys()], itemOrder)
-    return itemNames
+    if (!rangeStart || !rangeEnd || !visibleItemNames) return null
+    return visibleItemNames
       .map((name) => {
         const history = historyByItem.get(name)!
         const start = latestOnOrBefore(history, rangeStart)
@@ -399,7 +419,7 @@ export function TrackedItemRecordsView({
         return { name, start, end, diff }
       })
       .filter((v): v is NonNullable<typeof v> => v !== null)
-  }, [historyByItem, rangeStart, rangeEnd, itemOrder])
+  }, [historyByItem, rangeStart, rangeEnd, visibleItemNames])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-8">
