@@ -25,7 +25,8 @@ const ALL_STORAGES = '__all__'
 // storage はパーサが付ける位置ラベル、name はサイドバー等での表示名。
 const SHARED_DEFS: { storage: string; name: string }[] = [
   { storage: 'リスト1', name: 'アカウント金庫' },
-  { storage: 'リスト9', name: 'キューブ・ソウル' }
+  { storage: 'リスト9', name: 'キューブ・ソウル' },
+  { storage: 'その他', name: 'その他' }
 ]
 const SHARED_NAMES = new Set(SHARED_DEFS.map((d) => d.name))
 
@@ -194,7 +195,7 @@ function App(): React.JSX.Element {
     return map
   }, [result])
 
-  // 共有リスト（アカウント金庫・キューブ・ソウル）を各キャラクターから抜き出し、
+  // 共有リスト（アカウント金庫・キューブ・ソウル・その他）を各キャラクターから抜き出し、
   // それぞれ単独のエントリとしてまとめる
   const { entries, characterCount } = useMemo(() => {
     if (!result) return { entries: [] as CharacterInventory[], characterCount: 0 }

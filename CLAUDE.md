@@ -29,7 +29,7 @@ Three-process Electron (electron-vite builds each separately):
 - **File watching is polling-based** (`src/main/trc.ts`). `fs.watch` misses the game's buffered/memory-mapped writes. Uses `stat` every ~1s with throttle. Path: `~/AppData/LocalLow/DNF/DNF.trc`.
 - **SQLite via `node:sqlite`** (`DatabaseSync`, built into Electron 43's Node). No native modules (better-sqlite3 etc). One row per character name, `lists` stored as JSON, in `userData/inventory.db`.
 - **Decryption**: byte table XOR + ROL cipher, then unescape `0x42 0x5E` → `0x5E`, decode as Shift_JIS/cp932.
-- **Shared lists**: list positions 1 (アカウント金庫) and 9 (キューブ・ソウル) are account-wide. `App.tsx` hoists them into standalone sidebar entries, deduping to largest snapshot.
+- **Shared lists**: list positions 1 (アカウント金庫), 9 (キューブ・ソウル), and 10 (その他) are account-wide. `App.tsx` hoists them into standalone sidebar entries, deduping to largest snapshot.
 - **Live updates**: `watchTrc` → `loadInventory()` → `inventory:updated` IPC → `App.tsx` `refreshResult` swaps data without resetting selection/search.
 - **Parser** (`src/shared/parser.ts`): line-oriented state machine. `CHAR_START` opens a character, storage markers name lists, `Item Info List(Count: N)` opens a list. Within file, later sessions of the same character win (file is chronological).
 
