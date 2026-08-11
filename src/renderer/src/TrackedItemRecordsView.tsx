@@ -306,7 +306,7 @@ export function TrackedItemRecordsView({
   }, [pivotRows, historyByItem, rangeDates])
 
   // キャラクター別の内訳が存在するアイテム名の集合。
-  // アカウント金庫・キューブ・ソウル（共有ストレージ）は特定キャラクターの所持品ではないため、
+  // アカウント金庫・キューブ・ソウル・その他（共有ストレージ）は特定キャラクターの所持品ではないため、
   // 全キャラ合計（records）には含まれてもキャラクター別記録（charRecords）には現れない。
   const itemsWithCharacterData = useMemo(() => {
     if (!charRecords) return new Set<string>()
