@@ -78,18 +78,28 @@ function getDb(): DatabaseSync {
 
 // 保存済みの全キャラクターを読み込む。JSON が壊れている行はスキップする。
 export function getStoredCharacters(): CharacterInventory[] {
-  const rows = getDb().prepare('SELECT name, time, lists, prefix FROM characters').all() as {
+  const rows = getDb()
+    .prepare('SELECT name, time, lists, prefix, updated_at FROM characters')
+    .all() as {
     name: string
     time: string | null
     lists: string
     prefix: string | null
+    updated_at: string | null
   }[]
   const result: CharacterInventory[] = []
   for (const row of rows) {
     try {
       const lists = JSON.parse(row.lists) as ItemList[]
       const totalItems = lists.reduce((n, l) => n + l.items.length, 0)
-      result.push({ name: row.name, time: row.time ?? '', lists, totalItems, prefix: row.prefix ?? '' })
+      result.push({
+        name: row.name,
+        time: row.time ?? '',
+        lists,
+        totalItems,
+        prefix: row.prefix ?? '',
+        updatedAt: row.updated_at ?? ''
+      })
     } catch {
       // 壊れた行は無視して次へ
     }
@@ -98,6 +108,8 @@ export function getStoredCharacters(): CharacterInventory[] {
 }
 
 // 1 キャラクター分を保存（存在すれば置き換え）。
+// character.updatedAt が指定されていればそれを「最後に観測した日時」として保存し、
+// 無ければ現在時刻を使う（呼び出し側で観測時刻を揃えたい場合に使う）。
 export function upsertCharacter(character: CharacterInventory): void {
   getDb()
     .prepare(
@@ -114,7 +126,7 @@ export function upsertCharacter(character: CharacterInventory): void {
       character.time,
       JSON.stringify(character.lists),
       character.prefix ?? '',
-      new Date().toISOString()
+      character.updatedAt || new Date().toISOString()
     )
 }
 

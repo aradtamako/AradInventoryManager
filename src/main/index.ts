@@ -25,7 +25,9 @@ import type { CharacterInventory, ParseResult } from '../shared/types'
 
 // アカウント全体で共有されるストレージ（リスト1: アカウント金庫、リスト9: キューブ・ソウル、
 // リスト10: その他）はキャラクターごとの trc セッションに同じ内容が重複して出現するため、
-// 最もアイテム数が多いスナップショットだけを採用する。それ以外のストレージはキャラクターごとに
+// 最後に実際に観測された（＝ updatedAt が最も新しい）キャラクターのスナップショットだけを
+// 採用する。アイテム数の多寡では判定しない（使用して個数が減った場合、古い方が
+// アイテム数が多いまま採用され続けてしまうため）。それ以外のストレージはキャラクターごとに
 // 所持品が異なるため、全キャラクター分をそのまま合算する。
 const SHARED_STORAGES = new Set(['リスト1', 'リスト9', 'その他'])
 
@@ -37,7 +39,10 @@ function extractTrackedItemCounts(
   const counts = new Map<string, number>()
   if (watchedNames.size === 0) return counts
 
-  const bestShared = new Map<string, CharacterInventory['lists'][number]>()
+  const bestShared = new Map<
+    string,
+    { list: CharacterInventory['lists'][number]; updatedAt: string }
+  >()
   const addItem = (item: { name: string; data: number }): void => {
     if (!watchedNames.has(item.name)) return
     counts.set(item.name, (counts.get(item.name) ?? 0) + item.data)
@@ -47,13 +52,14 @@ function extractTrackedItemCounts(
     for (const list of c.lists) {
       if (SHARED_STORAGES.has(list.storage)) {
         const prev = bestShared.get(list.storage)
-        if (!prev || list.items.length > prev.items.length) bestShared.set(list.storage, list)
+        const updatedAt = c.updatedAt ?? ''
+        if (!prev || updatedAt > prev.updatedAt) bestShared.set(list.storage, { list, updatedAt })
         continue
       }
       for (const item of list.items) addItem(item)
     }
   }
-  for (const list of bestShared.values()) {
+  for (const { list } of bestShared.values()) {
     for (const item of list.items) addItem(item)
   }
   return counts
@@ -97,8 +103,10 @@ async function loadInventory(): Promise<ParseResult> {
   // 保存済みキャラクターを土台にし、今回観測したキャラクターをマージして上書きする。
   const byName = new Map<string, CharacterInventory>()
   for (const stored of getStoredCharacters()) byName.set(stored.name, stored)
+  const observedAt = new Date().toISOString()
   for (const fresh of parsed.characters) {
     const merged = mergeCharacter(byName.get(fresh.name), fresh)
+    merged.updatedAt = observedAt // 今回実際に観測できたキャラクターの「最新」時刻を記録する
     byName.set(merged.name, merged)
     upsertCharacter(merged) // 観測できたキャラクターだけ永続化する
   }

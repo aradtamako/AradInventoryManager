@@ -196,17 +196,22 @@ function App(): React.JSX.Element {
   }, [result])
 
   // 共有リスト（アカウント金庫・キューブ・ソウル・その他）を各キャラクターから抜き出し、
-  // それぞれ単独のエントリとしてまとめる
+  // それぞれ単独のエントリとしてまとめる。
+  // 複数キャラに同じ共有ストレージのスナップショットが重複して存在する場合は、
+  // アイテム数が多い方ではなく、最後に実際に観測された（updatedAt が最も新しい）方を採用する。
+  // アイテム数で判定すると、使用して個数が減った際に古い（数の多い）スナップショットが
+  // 採用され続けてしまい、キャラクターを変更しても古いデータが残って見える原因になる。
   const { entries, characterCount } = useMemo(() => {
     if (!result) return { entries: [] as CharacterInventory[], characterCount: 0 }
-    const sharedLists = new Map<string, ItemList>()
+    const sharedLists = new Map<string, { list: ItemList; updatedAt: string }>()
     const characters = result.characters.map((c) => {
       const own: ItemList[] = []
       for (const list of c.lists) {
         const def = SHARED_DEFS.find((d) => d.storage === list.storage)
         if (def) {
           const prev = sharedLists.get(def.storage)
-          if (!prev || list.items.length > prev.items.length) sharedLists.set(def.storage, list)
+          const updatedAt = c.updatedAt ?? ''
+          if (!prev || updatedAt > prev.updatedAt) sharedLists.set(def.storage, { list, updatedAt })
           continue
         }
         own.push(list)
@@ -216,13 +221,13 @@ function App(): React.JSX.Element {
     })
     const sharedEntries: CharacterInventory[] = []
     for (const def of SHARED_DEFS) {
-      const list = sharedLists.get(def.storage)
-      if (list) {
+      const entry = sharedLists.get(def.storage)
+      if (entry) {
         sharedEntries.push({
           name: def.name,
           time: '',
-          lists: [{ ...list, storage: def.name }],
-          totalItems: list.items.length,
+          lists: [{ ...entry.list, storage: def.name }],
+          totalItems: entry.list.items.length,
           prefix: ''
         })
       }

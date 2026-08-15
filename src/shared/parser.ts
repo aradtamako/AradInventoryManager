@@ -1,11 +1,35 @@
 import type { CharacterInventory, InventoryItem, ItemList, ParseResult } from './types'
 
+// 手動で UI を開かないと trc に再送されないストレージ（金庫類・共有ストレージ）だけは、
+// 今回未観測でも保存済みの内容をそのまま残す。
+// それ以外（インベントリ・装備・位置ベースで命名される「リストN」など）はキャラクターの
+// ゲーム開始のたびに毎回まるごと再送されるため、今回そのキャラが観測された時点で
+// フレッシュな内容に完全に置き換わっていないとおかしい。
+//
+// 「リストN」系は STORAGE_MARKER を持たないリストの出現順（position）で命名されるため、
+// セッションによって手前のリスト数が変わると同じ実体でも番号がずれることがある。
+// ここを stored 側からも無条件に引き継いでしまうと、ずれた古い番号のキーがいつまでも
+// 残り続け、実際には使用・売却して消えたはずのアイテムが古い「リストN」の中に残り続ける
+// （＝キャラクターを変更しても消えない）原因になる。
+const PERSIST_WHEN_UNOBSERVED = new Set([
+  'マイ金庫1',
+  'マイ金庫2',
+  'アカウント金庫',
+  'クリーチャー',
+  'リスト1', // アカウント金庫（位置ベースの別名）
+  'リスト9', // キューブ・ソウル
+  'その他'
+])
+
 // 保存済み（前回起動時までの）キャラクターと、今回 trc から読み取った新しいキャラクターを
 // マージする。DNF.trc はゲーム再起動で初期化されるため、今回観測されなかったキャラクターは
 // 保存済みの内容をそのまま残し、観測されたキャラクターはストレージ単位で新しい方を採用する。
 //
 // - 今回観測されたキャラクターは、保存済みの同名キャラのリストに対して、同じ storage を
-//   新しいリストで上書きする（＝金庫を開かずにログインしても、前回の金庫データが消えない）。
+//   新しいリストで上書きする。金庫類・共有ストレージ（PERSIST_WHEN_UNOBSERVED）は、
+//   今回そのストレージ自体が未観測でも保存済みの内容を残す（＝金庫を開かずにログインしても、
+//   前回の金庫データが消えない）。それ以外のストレージは今回観測された内容だけを採用し、
+//   保存済みの古い内容は引き継がない（毎回まるごと再送される想定のため）。
 // - 今回観測されなかったキャラクターは保存済みのまま表示に残る。
 export function mergeCharacter(
   stored: CharacterInventory | undefined,
@@ -16,7 +40,9 @@ export function mergeCharacter(
     return { ...fresh, totalItems, prefix: '' }
   }
   const byStorage = new Map<string, ItemList>()
-  for (const list of stored.lists) byStorage.set(list.storage, list)
+  for (const list of stored.lists) {
+    if (PERSIST_WHEN_UNOBSERVED.has(list.storage)) byStorage.set(list.storage, list)
+  }
   for (const list of fresh.lists) byStorage.set(list.storage, list) // 新しい方を優先
   const lists = [...byStorage.values()]
   const totalItems = lists.reduce((n, l) => n + l.items.length, 0)
