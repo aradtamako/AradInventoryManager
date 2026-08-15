@@ -22,6 +22,10 @@ export interface CharacterInventory {
   lists: ItemList[]
   totalItems: number
   prefix: string
+  // このキャラクターのデータを最後に実際に観測・保存した日時（ISO文字列）。
+  // アカウント金庫等の共有ストレージで、複数キャラの中からどれが最新の
+  // スナップショットかを判定するために使う。
+  updatedAt?: string
 }
 
 export interface ParseResult {

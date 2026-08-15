@@ -25,11 +25,11 @@ Three-process Electron (electron-vite builds each separately):
 
 ### Critical data-flow facts
 
-- **`DNF.trc` resets on game restart**. Never trust trc alone — `loadInventory()` layers fresh parses over SQLite-stored characters. Unobserved characters stay visible; observed ones merge per-storage via `mergeCharacter` in `parser.ts`.
+- **`DNF.trc` resets on game restart**. Never trust trc alone — `loadInventory()` layers fresh parses over SQLite-stored characters. Unobserved characters stay visible; observed ones merge per-storage via `mergeCharacter` in `parser.ts`. Only vault-type storages (`PERSIST_WHEN_UNOBSERVED` in `parser.ts`: マイ金庫1/2, アカウント金庫, クリーチャー, and the shared リスト1/リスト9/その他) carry forward stale stored data when not re-observed this session — everything else (インベントリ, 装備, and other position-labeled `リストN` lists) is fully replaced by the fresh session's data, or dropped if absent from it. This matters because unmarked lists are named by their position among that session's lists, so the same storage can land on a different `リストN` between sessions; blindly unioning old and new would leave orphaned stale entries (e.g. sold/used items that never disappear) under the old position number.
 - **File watching is polling-based** (`src/main/trc.ts`). `fs.watch` misses the game's buffered/memory-mapped writes. Uses `stat` every ~1s with throttle. Path: `~/AppData/LocalLow/DNF/DNF.trc`.
 - **SQLite via `node:sqlite`** (`DatabaseSync`, built into Electron 43's Node). No native modules (better-sqlite3 etc). One row per character name, `lists` stored as JSON, in `userData/inventory.db`.
 - **Decryption**: byte table XOR + ROL cipher, then unescape `0x42 0x5E` → `0x5E`, decode as Shift_JIS/cp932.
-- **Shared lists**: list positions 1 (アカウント金庫), 9 (キューブ・ソウル), and 10 (その他) are account-wide. `App.tsx` hoists them into standalone sidebar entries, deduping to largest snapshot.
+- **Shared lists**: list positions 1 (アカウント金庫), 9 (キューブ・ソウル), and 10 (その他) are account-wide. `App.tsx` hoists them into standalone sidebar entries, deduping to the snapshot with the newest `updatedAt` (per-character last-observed timestamp) — not the one with the most items, since item counts can legitimately shrink.
 - **Live updates**: `watchTrc` → `loadInventory()` → `inventory:updated` IPC → `App.tsx` `refreshResult` swaps data without resetting selection/search.
 - **Parser** (`src/shared/parser.ts`): line-oriented state machine. `CHAR_START` opens a character, storage markers name lists, `Item Info List(Count: N)` opens a list. Within file, later sessions of the same character win (file is chronological).
 
